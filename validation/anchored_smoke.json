@@ -1,0 +1,25 @@
+{
+  "synthetic_only": true,
+  "scientific_evidence": false,
+  "checks": [
+    {
+      "directory": "/tmp/dllm_research/anchored_random_audit",
+      "calibrated_layer_target_settings": 0
+    },
+    {
+      "directory": "/tmp/dllm_research/anchored_stationary_audit",
+      "calibrated_layer_target_settings": 15
+    }
+  ],
+  "source_sha256": {
+    "dllm_latent/analyze.py": "cdc0d2de048ba34e7b8753306cde41dc9310eaaea5b12b5c4d92cbbbf60d2c11",
+    "dllm_latent/collect.py": "603acf1b05c873de419716ae2b95aa2131b2f38ea56c1d6c341281e8d5ae7b3a",
+    "dllm_latent/features.py": "c8ed87a6aa205c77fe5978c76485895254a104bc4f19d4e908ee00702af728f4",
+    "dllm_latent/prompts.py": "2a936a515a88750a47aefeb6e6102969c46752b78d3a025797d90481f6a0561b",
+    "dllm_latent/prompt_format.py": "8dd0f2e8868b2fce4b3ca8b7a2f081517cd123bb9044dd3f649701a0ebacc9f4",
+    "dllm_latent/stability.py": "d3b4db32a6cd4f2f9f7e45da04f123119958893bb26fd988f9dc3a077135235e",
+    "dllm_latent/synthetic.py": "2f3038c9f3ea54a26d0bdc1cbed6d719c9d4812ef0f04ab10920fdc7a41fa57c",
+    "dllm_latent/timelines.py": "acf28909319256f4a124fed6bf8a091b0481e4bdd6cc2af66be1b5858965825f",
+    "dllm_latent/__init__.py": "dae91ec218c115077753f05c15bfa9bc080c298d49401c74b39ff18e07570df1"
+  }
+}

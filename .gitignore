@@ -1,0 +1,22 @@
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+runs/
+.cache/
+vendor/
+data/prepared*.jsonl
+
+# Local credentials and model/download artifacts
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+pytorch_model*.bin
+*.tar.gz
+.DS_Store
