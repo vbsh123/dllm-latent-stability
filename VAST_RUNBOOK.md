@@ -1,3 +1,18 @@
+# New early-stop comparison
+
+After activating the environment and pulling current main, run:
+
+```bash
+bash scripts/early_stop_experiment.sh 200 gsm_early_stop200 runs/gsm_dev200_v2/policy.json
+```
+
+This performs a small parity preflight, then compares Credit, no_geometry, latent
+layer16/radius .50 and latent layer16/radius1.00 on 200 questions each. Every method
+uses finalized-prefix EOS/EOT stopping. It adds explicit TPF columns and preserves
+old fixed-span results in their original directories. Detailed stopping semantics,
+denominators and an offline historical TPF audit are in ROLLOUT_EXPERIMENT.md.
+The older commands below omit --early-stop and retain the previous fixed-span mode.
+
 # Policy update before running
 
 Use the current configs/rollout_policy.json (persistent_regions_v2). Latent now keeps

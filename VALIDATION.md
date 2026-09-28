@@ -1,3 +1,15 @@
+# Early-stop / TPF validation
+
+113 CPU tests passed. Added tests cover committed EOS with prefix holes, EOS in
+prompt, noncommitted EOS predictions, multiple stop IDs, no EOS, prefix completion
+with suffix masks, block/full-span schedules, all six methods, trace invariance,
+full-run prefix equality, failed-attempt denominators, separate visible/stop/suffix
+TPF numerators and offline historical audit. Default no-stop upstream parity still
+passes. This is local synthetic validation; new GPU stopping checks are provided in
+the preflight. No full model was downloaded or run locally.
+
+Historical validation follows.
+
 # No-geometry control validation
 
 88 CPU tests pass. New checks independently verify control credit arithmetic across

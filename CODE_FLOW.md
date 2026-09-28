@@ -41,3 +41,10 @@ The old classifier is archived. features.py sliding-window descriptors, stabilit
 and timelines.py are legacy alternatives. Old gate configs and scalar traces cannot
 be reused to calibrate the new bank-and-boost method. Full details and run commands:
 [ROLLOUT_EXPERIMENT.md](ROLLOUT_EXPERIMENT.md).
+
+For early stopping, inspect decoding.finalized_stop_mask() and the post-insertion
+stop check in decode(). gsm8k_rollout resolves tokenizer stop IDs before saving the
+manifest. summarize_tpf() computes explicit token/forward ratios, and audit_tpf.py
+uses it on existing JSONL files without inference. tests/test_early_stop.py exercises
+out-of-order EOS and full-prefix parity. scripts/early_stop_experiment.sh runs the
+new matched comparison with a smoke preflight.

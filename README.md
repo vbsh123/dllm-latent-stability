@@ -40,6 +40,25 @@ Use fresh output directories. Actual model accuracy, speed and GPU memory fit ar
 not yet validated; the CPU suite is engineering validation only. See
 [VAST_RUNBOOK.md](VAST_RUNBOOK.md) for hardware, setup and result retrieval details.
 
+## Early stopping and explicit TPF
+
+Use `--early-stop` to terminate once an EOS/EOT is committed and every preceding
+position is finalized. It does not stop at an uncommitted prediction or leave holes
+in the delivered prefix. Prior commands default to no early stopping.
+
+The requested 200-question comparison (Credit, no-geometry, layer16/radius .50,
+and layer16/radius1.00) is prepared as:
+
+```bash
+bash scripts/early_stop_experiment.sh 200 gsm_early_stop200 runs/gsm_dev200_v2/policy.json
+```
+
+This includes a small parity preflight and 800 measured answers. All new summaries
+report output_tpf, output_tpf_with_stop and full_span_tpf; do not assume 256 generated
+tokens per answer with early stopping. `python -m dllm_latent.audit_tpf --help` explains
+how to calculate TPF from old saved outputs without rerunning inference. See the
+[current stopping/TPF protocol](ROLLOUT_EXPERIMENT.md) for exact conventions and caveats.
+
 ## Checkpoint and decoding configuration
 
 The recommended CreditDecoding comparison now uses **LLaDA-8B-Instruct with64-token

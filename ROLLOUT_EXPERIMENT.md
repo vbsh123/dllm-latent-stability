@@ -1,3 +1,87 @@
+# Current early-stop experiment
+
+New runs can enable `--early-stop`. The earlier runs documented below defaulted to
+no early stopping. The flag is opt-in so older commands keep their original behavior.
+
+The paper's Appendix C.7 says EOS must be finalized along with all preceding tokens.
+We check after each insertion step: a committed EOS/EOT with no masked position before
+it ends generation. A mere top1 EOS prediction never stops decoding. EOS in the prompt
+is ignored. Unfinished suffix masks do not make a finalized answer incomplete; an
+unfinished prefix at the budget still does. If no stop token appears, filling the
+whole length remains valid. This applies identically to every method. We do not prune
+suffix candidates or alter model input length before stopping, preserving the old
+trajectory up to termination. A final-step EOS can satisfy the rule without saving
+any forwards. Exact author token-ID and aggregation conventions remain unverified.
+
+Stop IDs are the tokenizer's EOS plus a valid `<|eot_id|>`, matching the existing text
+truncation policy; their exact values and early_stop flag are saved in manifest.config.
+Runner records include stop_reason, stop_position, eos_stopped, unresolved_prefix_masks,
+and unresolved_masks (the latter may include legitimate skipped suffix masks).
+All commitment/boost counters still count actual insertions anywhere in the span,
+including suffix tokens inserted before the stopping condition became true.
+
+### Run the requested comparison
+
+Layer16/radius .50 is the previously fastest tested geometric setting; 1.00 extends
+the radius further (20x the initial .05). Keep coefficients, threshold and fallback
+fixed. Include fresh Credit with the SAME stopping rule; do not reuse its no-stop
+wall-clock result as a matched comparator.
+
+```bash
+git pull --ff-only
+bash scripts/early_stop_experiment.sh 200 gsm_early_stop200 runs/gsm_dev200_v2/policy.json
+```
+
+The script first runs three full-baseline parity checks plus an early-stop/full-run
+prefix check and trace invariance for each selected method on one prompt. Inspect
+parity.json: a prompt without EOS may not exercise early termination, and three prompts
+are only a smoke check. Synthetic tests explicitly cover out-of-order committed EOS,
+prefix holes, alternate stop IDs, multiple blocks and incomplete suffixes.
+
+It then runs 200 questions for each of Credit, no_geometry and latent/radius .50,
+followed by latent/radius1.00 on the same 200 questions: 800 measured answers total.
+The first trio rotates method order. Radius1.00 is a separate process/run, so small
+time differences can reflect GPU variation. A different tag selects fresh directories.
+Set the first argument to 3 for an engineering smoke rather than a measured pilot.
+
+### TPF conventions and offline audit
+
+Each summary now reports:
+
+- output_tpf: total completed visible tokens before first EOS/EOT / ALL forwards.
+- output_tpf_with_stop: same but includes the first stop token when present.
+- full_span_tpf: ALL actually filled span tokens in completed outputs / ALL forwards,
+  including suffix positions that may have been filled before early stopping.
+- mean_output_tpf: mean per-answer visible-token/forward ratio, reported separately.
+- output_tpf_relative_to_baseline: normalized output_tpf if baseline is in that run;
+  otherwise unavailable. We do not normalize using a mismatched older baseline.
+
+Failed attempts contribute forwards and zero delivered tokens. Prompt tokens and
+intermediate top1 predictions are never counted. Time-based TPS remains separate.
+With early stopping, 256/mean_forwards is generally NOT TPF because outputs can end
+before 256 tokens. Paired output_tpf_ratio accounts for different output lengths;
+forward_speed_ratio alone compares forward counts, not token-normalized throughput.
+
+Audit saved no-stop outputs without a model or GPU:
+
+```bash
+python -m dllm_latent.audit_tpf \
+  --run runs/gsm_dev200_v2 runs/gsm_boost_audit200 runs/gsm_no_geometry_vs_radius050_200 \
+  --out runs/historical_tpf_audit.csv
+```
+
+Missing old stop-token counts are unavailable rather than inferred. Historical
+forwards remain unchanged: this audit does not recreate early-stop performance.
+Answer extraction is unchanged and retains the known strict/lenient limitations.
+Matching stopping semantics does not yet reproduce the paper's OpenCompass grading.
+
+Source: [CreditDecoding, Appendix C.7](https://aclanthology.org/2026.acl-long.509.pdf).
+
+---
+
+The following sections document the original fixed-span runs and other available
+policies. Statements that no early stopping is used describe that original mode.
+
 # Actual GSM8K generation experiment
 
 The main question is now **accuracy versus compute under actual commitment policies**.

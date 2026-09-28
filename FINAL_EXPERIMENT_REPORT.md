@@ -1,3 +1,20 @@
+# Current update: opt-in early stop and explicit TPF
+
+The new experiment uses --early-stop: terminate only at committed EOS/EOT with a
+fully finalized prefix, as described in paper C.7. Suffix masks are permitted on
+successful termination; no pruning changes the trajectory before stopping. The exact
+checkpoint stop IDs are recorded. Primary visible-output TPF, include-stop TPF,
+full-span TPF and mean-per-answer TPF are reported separately; normalized baseline
+TPF is available only for a baseline in the same run. Fixed-span counts are not
+substituted for shorter output lengths. Historical results can be audited offline
+but cannot recover counterfactual early-stop wall time.
+
+The prepared comparison is Credit and no_geometry plus layer16/radius .50 and1.00,
+all on the same 200 development questions. No new early-stop GPU result is available
+from this local implementation. Matching the stop rule does not fix known answer-
+extraction limitations or reproduce the entire OpenCompass evaluation. Earlier
+sections below describe original fixed-span behavior unless explicitly updated.
+
 # Actual-generation experiment implementation report
 
 **Implementation and CPU validation only. No real-model quality or speed results yet.**
@@ -50,7 +67,7 @@ incomplete answers as incorrect. Tracing is off by default for timing.
 
 ## 4. Main results
 
-**88 CPU tests passed** after this update. Tests cover manual A/A/B/A/B credit
+**113 CPU tests passed** after this update. Tests cover manual A/A/B/A/B credit
 arithmetic, retaining multiple regions across bank growth, position independence,
 frozen-anchor drift, candidate changes, exact boost equations, no count-based bypass,
 boosted fallback ranking, diagnostic/rollout state parity, and existing sampler,

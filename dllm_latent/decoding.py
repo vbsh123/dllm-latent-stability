@@ -124,9 +124,16 @@ def no_geometry_distribution(logits, credit, active, settings):
         region_id=torch.full_like(token,-1))
 
 
+def finalized_stop_mask(generated, mask_id, stop_ids):
+    """Stop tokens qualify only after every earlier generated position is filled."""
+    is_stop=(generated[:,None]==stop_ids[None,:]).any(-1)
+    prefix_complete=(generated==mask_id).long().cumsum(0)==0
+    return is_stop & prefix_complete
+
+
 @torch.inference_mode()
 def decode(model,prompt,config,method='credit',threshold=.95,latent=None,fallback='top1',trace=True):
-    """Each policy controls its own model inputs. Batch1, no CFG/cache/early stop.
+    """Each policy controls its own model inputs. Batch1, no CFG/cache; optional finalized-prefix EOS stop.
 
     baseline uses the original fixed schedule; other methods commit all passing
     positions, optionally forcing one best candidate only if none pass. The same
@@ -142,6 +149,12 @@ def decode(model,prompt,config,method='credit',threshold=.95,latent=None,fallbac
     if min(length,block,steps)<=0 or length%block or steps%(length//block) or steps>length:
         raise ValueError('Invalid decoding schedule')
     if (prompt==mask).any(): raise ValueError('Prompt contains mask token')
+    early_stop=bool(config.get('early_stop',False))
+    configured_stops=config.get('stop_token_ids',[])
+    if early_stop and (not configured_stops or mask in configured_stops):
+        raise ValueError('Early stop requires non-mask stop_token_ids')
+    stop_ids=torch.tensor(configured_stops,device=prompt.device,dtype=torch.long)
+    stopped=False
     cap=steps//(length//block); offset=prompt.shape[1]
     x=torch.full((1,offset+length),mask,dtype=torch.long,device=prompt.device);x[:,:offset]=prompt
     use_latent=method in ('latent','combined'); latent=latent or LatentSettings()
@@ -236,6 +249,10 @@ def decode(model,prompt,config,method='credit',threshold=.95,latent=None,fallbac
                         info['support'][idx] if info is not None else torch.full_like(idx,float('nan'),dtype=torch.float32),
                         info['region_id'][idx].float() if info is not None else torch.full_like(idx,-1).float(),
                         raw_confidence[idx],p[idx,tokens[idx]],raw_tokens[idx].float(),boost_enabled[idx].float()],dim=1))
+                if early_stop and finalized_stop_mask(x[0,offset:],mask,stop_ids).any():
+                    stopped=True
+                    break
+            if stopped: break
             if (x[0,start:stop]==mask).any():
                 complete=False;break
     finally:
@@ -254,5 +271,12 @@ def decode(model,prompt,config,method='credit',threshold=.95,latent=None,fallbac
     attribution_keys=('boost_enabled','already_confident','fallback','scheduled','changed_candidate')
     attribution=dict(zip(attribution_keys,acceptance_counts.cpu().tolist()))
     geometry_counts=dict(zip(('new','reused','invalid'),region_counts.cpu().tolist())) if use_latent else None
+    stop_position=None
+    if stopped:
+        stop_position=int(torch.where(finalized_stop_mask(x[0,offset:],mask,stop_ids))[0][0])
+    prefix_end=stop_position if stopped else length
     return dict(tokens=x,forwards=forwards,complete=complete,unresolved_masks=int((x[0,offset:]==mask).sum()),
+                unresolved_prefix_masks=int((x[0,offset:offset+prefix_end]==mask).sum()),
+                early_stop_enabled=early_stop,eos_stopped=stopped,stop_position=stop_position,
+                stop_reason='eos' if stopped else ('length' if complete else 'budget'),
                 counts=count_dict,acceptance_counts=attribution,region_observation_counts=geometry_counts,commits=commits,unchanged_context_steps=int(unchanged_steps))

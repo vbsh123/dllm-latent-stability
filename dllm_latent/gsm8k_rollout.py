@@ -82,6 +82,29 @@ def summarize_region_observations(records):
     return result
 
 
+def output_lengths(tokens,mask_id,stop_ids):
+    end=next((i for i,t in enumerate(tokens) if t in stop_ids),len(tokens))
+    visible=sum(t!=mask_id for t in tokens[:end])
+    return dict(visible_output_tokens=visible,
+                output_tokens_with_stop=visible+int(end<len(tokens)),
+                generated_span_tokens=sum(t!=mask_id for t in tokens)),end
+
+
+def summarize_tpf(records):
+    """Ratio of totals; unsuccessful attempts contribute forwards but no delivered tokens."""
+    forwards=sum(r['forwards'] for r in records)
+    def metric(key):
+        if not forwards or any(key not in r for r in records):return None
+        return sum(r[key]*r['complete'] for r in records)/forwards
+    return dict(output_tpf=metric('visible_output_tokens'),
+                output_tpf_with_stop=metric('output_tokens_with_stop'),
+                full_span_tpf=metric('generated_span_tokens'),
+                mean_output_tpf=sum(r['visible_output_tokens']*r['complete']/r['forwards']
+                    for r in records)/len(records) if records and all(r['forwards'] for r in records) else None,
+                early_stop_enabled=all(r.get('early_stop_enabled',False) for r in records) if records else False,
+                eos_stop_rate=sum(r.get('eos_stopped',False) for r in records)/len(records) if records else None)
+
+
 def write_report(records,out,bootstrap=1000):
     out=Path(out);df=pd.DataFrame([{k:v for k,v in r.items() if k not in ('commits','output','token_ids','question','formatted_prompt')} for r in records])
     if df.duplicated(['id','method']).any(): raise ValueError('Duplicate question/method result')
@@ -103,8 +126,12 @@ def write_report(records,out,bootstrap=1000):
             unchanged_context_steps=sum(r.get('unchanged_context_steps',0) for r in records if r['method']==method),
             forced_fraction=float(g.fallback_commits.sum()/max(1,g.total_commits.sum())),peak_gpu_gib=float(g.peak_gpu_bytes.max()/2**30),
             **summarize_boost_attribution([r for r in records if r['method']==method]),
-            **summarize_region_observations([r for r in records if r['method']==method])))
-    summary=pd.DataFrame(rows);summary.to_csv(out/'summary.csv',index=False)
+            **summarize_region_observations([r for r in records if r['method']==method]),
+            **summarize_tpf([r for r in records if r['method']==method])))
+    summary=pd.DataFrame(rows)
+    base=summary.loc[summary.method=='baseline','output_tpf']
+    summary['output_tpf_relative_to_baseline']=summary.output_tpf/float(base.iloc[0]) if len(base) and base.iloc[0]>0 else None
+    summary.to_csv(out/'summary.csv',index=False)
     rng=np.random.default_rng(1729);paired=[]
     for reference in ('baseline','credit','no_geometry'):
         ref=df[df.method==reference].set_index('id')
@@ -122,6 +149,9 @@ def write_report(records,out,bootstrap=1000):
             paired.append(dict(reference=reference,method=method,accuracy_delta=float(delta.mean()),
                 accuracy_delta_low=float(np.quantile(draws,.025)),accuracy_delta_high=float(np.quantile(draws,.975)),
                 forward_speed_ratio=float(ref.forwards.sum()/max(1,g.forwards.sum())),
+                output_tpf_ratio=float(((g.visible_output_tokens*g.complete).sum()/g.forwards.sum())/
+                    ((ref.visible_output_tokens*ref.complete).sum()/ref.forwards.sum()))
+                    if (ref.visible_output_tokens*ref.complete).sum()>0 else None,
                 measured_time_speed_ratio=float(ref.seconds.sum()/g.seconds.sum()) if g.seconds.sum()>0 else None,
                 improved=int((delta>0).sum()),regressed=int((delta<0).sum())))
     pd.DataFrame(paired).to_csv(out/'paired_comparisons.csv',index=False)
@@ -147,8 +177,11 @@ Each method generated its own answer, feeding its actual commitments into subseq
 forwards. Primary quality is numeric final-answer accuracy, NOT token agreement with
 the baseline. Different valid wording is allowed. Strict grading takes the last
 explicit #### number; an additional last-number metric exposes formatting sensitivity.
-Incomplete outputs count as incorrect even if a numeric answer is present. No EOS
-early termination is used; all policies share block size, length and forward cap.
+Incomplete prefixes count as incorrect even if a numeric answer is present. All
+policies share the configured stopping rule, block size, length and forward cap.
+With --early-stop, only a committed EOS/EOT with every preceding position finalized
+terminates decoding. Unfilled suffix masks then do not make the answer incomplete.
+Without --early-stop, the entire span must be filled. Check manifest.json for the mode.
 Text is truncated at the first generated EOS/EOT for grading after generation.
 
 Read manifest.json and policy.json before interpreting results. Shipped latent settings
@@ -194,11 +227,16 @@ runs have unavailable geometry counters, not zero creation rates.
 output_tps is the total number of pre-EOS/EOT output tokens in completed generations
 divided by total decoder seconds, including time spent on incomplete attempts.
 full_span_tps also counts the generated suffix after EOS/EOT. It can overstate useful
-throughput because these runs do not terminate at EOS. Neither metric counts prompt
+throughput by counting suffix work, including positions already committed before early stopping. Neither metric counts prompt
 tokens or intermediate predictions; ratios of totals are used, not averages of per-
 answer TPS. Report accuracy and seconds per answer alongside TPS because verbosity
 can change output length and throughput without improving task performance.
 '''
+    report+='\nTPF uses total delivered tokens / total forwards, including failed-attempt forwards.\n'
+    report+='output_tpf excludes EOS/EOT; output_tpf_with_stop includes the first stop token.\n'
+    report+='full_span_tpf counts every filled span position, including suffix work.\n'
+    report+='mean_output_tpf separately averages per-answer ratios. Paper aggregation and exact\n'
+    report+='stop-token conventions are not fully reproduced merely by enabling early stop.\n'
     (out/'FINAL_EXPERIMENT_REPORT.md').write_text(report+'\n'+summary.to_string(index=False)+'\n')
     return summary
 
@@ -215,6 +253,10 @@ def main():
     ap.add_argument('--latent-alpha',type=float);ap.add_argument('--latent-gamma',type=float)
     ap.add_argument('--confidence-threshold',type=float);ap.add_argument('--fallback',choices=['top1','none'])
     ap.add_argument('--warmup',type=int,default=1)
+    stopping=ap.add_mutually_exclusive_group()
+    stopping.add_argument('--early-stop',dest='early_stop',action='store_true',help='Stop only at committed EOS/EOT with a fully finalized prefix')
+    stopping.add_argument('--no-early-stop',dest='early_stop',action='store_false')
+    ap.set_defaults(early_stop=False)
     tracing=ap.add_mutually_exclusive_group()
     tracing.add_argument('--trace',dest='trace',action='store_true',help='Separate explanatory run; off by default for timing')
     tracing.add_argument('--no-trace',dest='trace',action='store_false')
@@ -227,6 +269,7 @@ def main():
     if not torch.cuda.is_available(): raise SystemExit('Actual rollouts require CUDA; use CPU synthetic unit tests locally.')
     if args.limit<1 or args.offset<0 or args.warmup<0 or args.parity_prompts<1 or len(set(args.methods))!=len(args.methods): raise ValueError('Invalid sample/method settings')
     cfg=json.loads(Path(args.config).read_text());policy=json.loads(Path(args.policy_config).read_text())
+    cfg['early_stop']=args.early_stop
     for key in ('gen_length','steps'):
         if getattr(args,key) is not None: cfg[key]=getattr(args,key)
     block=args.block_length or cfg['block_length'];cfg['block_length']=cfg['gen_length'] if block=='full' else int(block)
@@ -243,6 +286,11 @@ def main():
     from transformers import AutoModel,AutoTokenizer
     from datasets import load_dataset
     tok=AutoTokenizer.from_pretrained(cfg['model_id'],revision=cfg['model_revision'],trust_remote_code=True)
+    stop_ids={tok.eos_token_id} if tok.eos_token_id is not None else set()
+    eot=tok.convert_tokens_to_ids('<|eot_id|>')
+    if eot is not None and eot!=tok.unk_token_id:stop_ids.add(eot)
+    cfg['stop_token_ids']=sorted(stop_ids)
+    if args.early_stop and (not stop_ids or cfg['mask_id'] in stop_ids):raise ValueError('Tokenizer has no valid stop token set')
     dataset_id,revision=SOURCES['gsm8k'];data=load_dataset(dataset_id,'main',revision=revision,split=args.split)
     order=list(range(len(data)));random.Random(cfg['seed']).shuffle(order)
     prepared=[];skipped=[]
@@ -259,25 +307,26 @@ def main():
     source={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(Path('dllm_latent').rglob('*.py'))}
     manifest=dict(config=cfg,policy=policy,arguments=vars(args),dataset=dataset_id,dataset_revision=revision,
         split=args.split,question_ids=[p['id'] for p in prepared],excluded_rows=skipped,source_sha256=source,
-        instruction=INSTRUCTION,early_stop=False,torch=torch.__version__,gpu=torch.cuda.get_device_name(0),
+        instruction=INSTRUCTION,early_stop=args.early_stop,torch=torch.__version__,gpu=torch.cuda.get_device_name(0),
         python=platform.python_version(),cuda=torch.version.cuda,
         packages=subprocess.check_output([sys.executable,'-m','pip','freeze'],text=True).splitlines())
     (out/'manifest.json').write_text(json.dumps(manifest,indent=2));(out/'policy.json').write_text(json.dumps(policy,indent=2))
     (out/'questions.jsonl').write_text(''.join(json.dumps({k:v for k,v in p.items() if k!='ids'})+'\n' for p in prepared))
     model=AutoModel.from_pretrained(cfg['model_id'],revision=cfg['model_revision'],trust_remote_code=True,
         torch_dtype=getattr(torch,cfg['dtype']),low_cpu_mem_usage=True).to('cuda').eval()
-    def run(method,ids,trace=None):
-        return decode(model,ids,cfg,method,policy['threshold'],latent,policy['fallback'],args.trace if trace is None else trace)
+    def run(method,ids,trace=None,early_stop=None):
+        run_cfg=cfg if early_stop is None else dict(cfg,early_stop=early_stop)
+        return decode(model,ids,run_cfg,method,policy['threshold'],latent,policy['fallback'],args.trace if trace is None else trace)
     if args.verify_parity or args.parity_only:
         from .third_party.llada_generate import generate
         selected=select_parity_indices([p['ids'].shape[1] for p in prepared],args.parity_prompts)
-        checks=[]; trace_checks=[]
+        checks=[]; trace_checks=[];stop_checks=[]
         for index in selected:
             p=prepared[index];ids=p['ids'].to('cuda')
             with torch.inference_mode():
                 torch.manual_seed(cfg['seed'])
                 original=generate(model,ids,steps=cfg['steps'],gen_length=cfg['gen_length'],block_length=cfg['block_length'],mask_id=cfg['mask_id'])
-                torch.manual_seed(cfg['seed']);actual=run('baseline',ids,False)['tokens']
+                torch.manual_seed(cfg['seed']);actual=run('baseline',ids,False,early_stop=False)['tokens']
             if not torch.equal(original,actual): raise AssertionError(f'Baseline parity failed: {p["id"]}')
             checks.append(dict(id=p['id'],prompt_tokens=int(ids.shape[1]),identical=True))
             print(f'Parity {len(checks)}/{len(selected)}: {p["id"]}, prompt tokens={ids.shape[1]}',flush=True)
@@ -287,18 +336,27 @@ def main():
             torch.manual_seed(cfg['seed']);plain=run(method,ids,False)
             if not torch.equal(traced['tokens'],plain['tokens']) or traced['counts']!=plain['counts'] or traced['acceptance_counts']!=plain['acceptance_counts'] or traced['region_observation_counts']!=plain['region_observation_counts'] or traced['forwards']!=plain['forwards']:
                 raise AssertionError(f'Trace invariance failed: {method}')
+            for key in ('complete','eos_stopped','stop_position','stop_reason','unresolved_prefix_masks'):
+                if traced[key]!=plain[key]:raise AssertionError(f'Trace stop invariance failed: {method}, {key}')
             trace_checks.append(dict(method=method,identical=True))
+            if args.early_stop:
+                torch.manual_seed(cfg['seed']);full=run(method,ids,False,early_stop=False)
+                if plain['eos_stopped']:
+                    end=ids.shape[1]+plain['stop_position']+1
+                    same=torch.equal(plain['tokens'][:,:end],full['tokens'][:,:end])
+                else: same=torch.equal(plain['tokens'],full['tokens'])
+                if not same or plain['forwards']>full['forwards']:
+                    raise AssertionError(f'Early-stop prefix parity failed: {method}')
+                stop_checks.append(dict(method=method,identical_prefix=True,eos_stopped=plain['eos_stopped'],
+                                        forwards=plain['forwards'],full_forwards=full['forwards']))
         (out/'parity.json').write_text(json.dumps(dict(requested=args.parity_prompts,checked=len(checks),checks=checks,
-            trace_checks=trace_checks,trace_prompt_id=prepared[selected[len(selected)//2]]['id']),indent=2))
+            trace_checks=trace_checks,early_stop_checks=stop_checks,baseline_parity_early_stop=False,trace_prompt_id=prepared[selected[len(selected)//2]]['id']),indent=2))
         if args.parity_only:
             print('Parity passed; no measured experiment was run.');return
     for method in args.methods:
         for _ in range(args.warmup):
             torch.manual_seed(cfg['seed']);run(method,prepared[0]['ids'].to('cuda'))
     torch.cuda.synchronize()
-    stop_ids={tok.eos_token_id}
-    eot=tok.convert_tokens_to_ids('<|eot_id|>')
-    if eot is not None and eot!=tok.unk_token_id: stop_ids.add(eot)
     records=[]
     for i,p in enumerate(prepared):
         methods=args.methods[i%len(args.methods):]+args.methods[:i%len(args.methods)]
@@ -307,12 +365,11 @@ def main():
             torch.manual_seed(cfg['seed']);torch.cuda.synchronize();torch.cuda.reset_peak_memory_stats()
             start=time.perf_counter();result=run(method,ids);torch.cuda.synchronize();elapsed=time.perf_counter()-start
             peak=torch.cuda.max_memory_allocated();tokens=result.pop('tokens')[0,ids.shape[1]:].cpu().tolist()
-            end=next((j for j,t in enumerate(tokens) if t in stop_ids),len(tokens))
+            lengths,end=output_lengths(tokens,cfg['mask_id'],stop_ids)
             output=tok.decode(tokens[:end],skip_special_tokens=True)
             for event in result['commits']: event['token_text']=tok.decode([event['token']])
             record=dict(id=p['id'],method=method,question=p['question'],formatted_prompt=p['formatted'],output=output,token_ids=tokens,
-                visible_output_tokens=sum(t!=cfg['mask_id'] for t in tokens[:end]),
-                generated_span_tokens=sum(t!=cfg['mask_id'] for t in tokens),
+                **lengths,
                 seconds=elapsed,peak_gpu_bytes=peak,fallback_commits=result['counts'].get('fallback',0),
                 total_commits=sum(result['counts'].values()),**result,**grade(output,p['answer'],result['complete']))
             records.append(record)

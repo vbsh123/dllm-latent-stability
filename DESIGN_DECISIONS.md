@@ -1,3 +1,20 @@
+# EOS early stopping and TPF update
+
+| Decision | Choice made | Why | Alternatives considered | Could this affect the scientific result? |
+|---|---|---|---|---|
+| Stop rule | Committed EOS/EOT and all prior generated positions finalized; check after each insertion | Matches paper C.7 description, avoids premature stop on masked prefix | First predicted EOS; wait until block complete | High for TPF, runtime and completeness |
+| Stop IDs | Tokenizer EOS and valid eot_id; persist exact IDs | Same endpoint as existing answer truncation | EOS-only | Possible paper mismatch; inspect IDs |
+| Prefix versus suffix | Allow suffix masks after finalized stop; prefix masks still fail | Suffix is not part of completed answer | Require entire span | High |
+| Trajectory preservation | No suffix pruning, no input truncation; stop is sole behavioral change | Preserve old prefix for direct parity | Stop attending to suffix after EOS seen | Runtime still includes full-span forward cost |
+| Default | Explicit --early-stop, prior default remains off | Keep old commands reproducible | Change all defaults | Must record mode and not mix comparisons |
+| Primary TPF | Sum completed visible tokens / sum all forwards; also include-stop/full-span and mean-ratio variants | Explicit numerators, failures and aggregation | 256/mean forwards everywhere | High; exact paper aggregation unverified |
+| New radii | Layer16 .50 and1.00 | User requested best tested radius and larger boundary | Other layers or larger grids | Development sensitivity, not heldout |
+| Matched comparator | Fresh Credit with early stop | Old fixed-span time cannot serve as matched reference | Reuse prior Credit | Additional 200 answers |
+| EOS parity | Full baseline remains upstream-matched with stopping disabled; stopped prefixes checked against full runs | Upstream sampler has no stop mode | Compare stopped whole tensor to full tensor | Engineering test avoids false mismatch |
+| Offline audit | Recompute metrics from saved lengths/forwards without inference | Resolve current reporting gap cheaply | Guess counterfactual stop time | Cannot recover early-stop wall time |
+
+Historical decisions below remain applicable except for the new opt-in stop mode.
+
 # No-geometry control and large-radius comparison
 
 | Decision | Choice made | Why | Alternatives considered | Could this affect the scientific result? |
