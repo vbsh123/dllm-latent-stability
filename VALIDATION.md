@@ -1,3 +1,13 @@
+# Additive hybrid validation
+
+136 CPU tests pass. New coverage checks manual A/A/B/A match-reward arithmetic, no
+new-anchor bonus, independent NumPy token-credit-plus-position fusion across changing
+winners, zero-weight reduction to no_geometry, unconditional doubled increment,
+inactive-position behavior, per-block reset, hidden-free credit hybrid, and extended
+trace/EOS/full-prefix parity for all three new variants. No GPU inference ran locally.
+
+Historical validation follows.
+
 # Early-stop / TPF validation
 
 113 CPU tests passed. Added tests cover committed EOS with prefix holes, EOS in

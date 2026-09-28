@@ -23,7 +23,7 @@ NUMBER=r'[-+]?(?:\d[\d,]*(?:\.\d+)?|\.\d+)'
 MARKER=re.compile(r'^[ \t]*####[ \t]*\$?[ \t]*('+NUMBER+r')[ \t]*$',re.MULTILINE)
 INSTRUCTION='Solve the problem and show your reasoning. End your answer with a line of the form: #### number.'
 DEFAULT_METHODS=('baseline','confidence','credit','latent','combined')
-METHODS=DEFAULT_METHODS+('no_geometry',)
+METHODS=DEFAULT_METHODS+('no_geometry','no_geometry_radius','no_geometry_credit','no_geometry_double')
 
 
 def numeric(text):
@@ -120,6 +120,9 @@ def write_report(records,out,bootstrap=1000):
             latent_commits=sum(r.get('counts',{}).get('latent',0) for r in records if r['method']==method),
             combined_commits=sum(r.get('counts',{}).get('combined',0) for r in records if r['method']==method),
             no_geometry_commits=sum(r.get('counts',{}).get('no_geometry',0) for r in records if r['method']==method),
+            no_geometry_radius_commits=sum(r.get('counts',{}).get('no_geometry_radius',0) for r in records if r['method']==method),
+            no_geometry_credit_commits=sum(r.get('counts',{}).get('no_geometry_credit',0) for r in records if r['method']==method),
+            no_geometry_double_commits=sum(r.get('counts',{}).get('no_geometry_double',0) for r in records if r['method']==method),
             credit_commits=sum(r.get('counts',{}).get('credit',0) for r in records if r['method']==method),
             confidence_commits=sum(r.get('counts',{}).get('confidence',0) for r in records if r['method']==method),
             fallback_commits=int(g.fallback_commits.sum()),
@@ -133,7 +136,7 @@ def write_report(records,out,bootstrap=1000):
     summary['output_tpf_relative_to_baseline']=summary.output_tpf/float(base.iloc[0]) if len(base) and base.iloc[0]>0 else None
     summary.to_csv(out/'summary.csv',index=False)
     rng=np.random.default_rng(1729);paired=[]
-    for reference in ('baseline','credit','no_geometry'):
+    for reference in ('baseline','credit','no_geometry','no_geometry_double','no_geometry_credit'):
         ref=df[df.method==reference].set_index('id')
         if ref.empty: continue
         for method,g in df.groupby('method'):
@@ -224,6 +227,15 @@ Latent runs also record new/reused/invalid region observations across all active
 including first visits and steps where no token is committed. No-geometry and older
 runs have unavailable geometry counters, not zero creation rates.
 
+Optional hybrids add position-level accumulation to radius matching or token credit.
+no_geometry_radius earns (1 + bonus_weight*existing_match)*p(top1)^gamma each step in
+one position balance; new anchors do not receive a match bonus. no_geometry_credit
+adds the original token-credit vector (scaled by bonus_weight) to the position credit
+mapped to current top1, before shared log fusion. no_geometry_double adds the same
+extra increment unconditionally, a control for stronger boosting. This changes total
+credit strength, so a faster hybrid alone is not evidence that its selector is useful.
+Layer/radius apply only to the radius hybrid; all keep the common stopping rule.
+
 output_tps is the total number of pre-EOS/EOT output tokens in completed generations
 divided by total decoder seconds, including time spent on incomplete attempts.
 full_span_tps also counts the generated suffix after EOS/EOT. It can overstate useful
@@ -251,6 +263,7 @@ def main():
     ap.add_argument('--gen-length',type=int);ap.add_argument('--steps',type=int);ap.add_argument('--block-length')
     ap.add_argument('--layer',type=int);ap.add_argument('--radius',type=float);ap.add_argument('--decay',type=float)
     ap.add_argument('--latent-alpha',type=float);ap.add_argument('--latent-gamma',type=float)
+    ap.add_argument('--bonus-weight',type=float,help='Hybrid extra-credit multiplier; default 1')
     ap.add_argument('--confidence-threshold',type=float);ap.add_argument('--fallback',choices=['top1','none'])
     ap.add_argument('--warmup',type=int,default=1)
     stopping=ap.add_mutually_exclusive_group()
@@ -274,11 +287,12 @@ def main():
         if getattr(args,key) is not None: cfg[key]=getattr(args,key)
     block=args.block_length or cfg['block_length'];cfg['block_length']=cfg['gen_length'] if block=='full' else int(block)
     validate_config(cfg)
-    for key,arg in [('layer','layer'),('radius','radius'),('decay','decay'),('alpha','latent_alpha'),('gamma','latent_gamma')]:
+    for key,arg in [('layer','layer'),('radius','radius'),('decay','decay'),('alpha','latent_alpha'),('gamma','latent_gamma'),('bonus_weight','bonus_weight')]:
         if getattr(args,arg) is not None: policy['latent'][key]=getattr(args,arg)
     if args.confidence_threshold is not None: policy['threshold']=args.confidence_threshold
     if args.fallback is not None: policy['fallback']=args.fallback
     latent=LatentSettings(**policy['latent'])
+    policy['latent']=asdict(latent)  # Persist defaults too, including the hybrid weight.
     if not 0<policy['threshold']<=1 or policy['fallback'] not in ('top1','none'): raise ValueError('Invalid policy')
     out=Path(args.out)
     if out.exists() and any(out.iterdir()): raise ValueError('Use an empty run directory; never mix policy outputs')

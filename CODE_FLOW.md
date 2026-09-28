@@ -48,3 +48,9 @@ manifest. summarize_tpf() computes explicit token/forward ratios, and audit_tpf.
 uses it on existing JSONL files without inference. tests/test_early_stop.py exercises
 out-of-order EOS and full-prefix parity. scripts/early_stop_experiment.sh runs the
 new matched comparison with a smoke preflight.
+
+For the additive variants, read hybrid_distribution() in decoding.py. The radius
+variant obtains existing_match from RegionSupport and accumulates a position-level
+reward; the Credit variant receives update_token_credit()'s full vector. The double
+control adds an unconditional extra increment. Defaults are persisted by the runner,
+including bonus_weight. Tests in test_hybrid_credit.py specify the expected arithmetic.

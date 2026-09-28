@@ -22,7 +22,7 @@ class OutOfOrderEOS(TinyModel):
         return SimpleNamespace(logits=logits)
 
 
-@pytest.mark.parametrize('method',['baseline','confidence','credit','latent','combined','no_geometry'])
+@pytest.mark.parametrize('method',['baseline','confidence','credit','latent','combined','no_geometry','no_geometry_radius','no_geometry_credit','no_geometry_double'])
 @pytest.mark.parametrize('block',[4,8])
 def test_stop_waits_for_prefix_then_skips_suffix_and_preserves_full_run_prefix(method,block):
     cfg=dict(gen_length=8,block_length=block,steps=8,mask_id=6,stop_token_ids=[5])
@@ -69,7 +69,7 @@ def test_invalid_stop_configuration_rejected(stops):
     with pytest.raises(ValueError,match='stop_token_ids'):decode(OutOfOrderEOS(),torch.tensor([[0]]),cfg)
 
 
-@pytest.mark.parametrize('method',['baseline','confidence','credit','latent','combined','no_geometry'])
+@pytest.mark.parametrize('method',['baseline','confidence','credit','latent','combined','no_geometry','no_geometry_radius','no_geometry_credit','no_geometry_double'])
 def test_early_stop_trace_invariance(method):
     cfg=dict(gen_length=8,block_length=4,steps=8,mask_id=6,early_stop=True,stop_token_ids=[5])
     a=decode(OutOfOrderEOS(),torch.tensor([[0]]),cfg,method=method,trace=True)

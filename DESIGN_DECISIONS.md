@@ -1,3 +1,19 @@
+# Additive hybrids: unrestricted credit plus selective evidence
+
+| Decision | Choice made | Why | Alternatives considered | Could this affect the scientific result? |
+|---|---|---|---|---|
+| Radius hybrid | One position balance earns w plus lambda*w on an existing-region match | Implements agreed base-plus-match-reward recurrence | Sum two region-local balances | High; old bonuses persist across later region changes |
+| Radius/first visit | Layer16, radius1.00; creation never counts as closeness | Explicit user radius request; avoid tautological first-hit reward | Smaller radius or bonus on creation | High |
+| Increment | w=p(top1)^gamma, lambda1 default | Preserve accepted confidence-weighted formulation | Literal +1/+1 | High |
+| Credit hybrid | Unrestricted scalar mapped to current top1 plus lambda times full token-credit vector before log fusion | Preserve actual token-identity evidence from paper | Boost only current candidate with both balances | High; historical winner remains possible |
+| Token recurrence | Original fixed beta .7/gamma .2; scalar saved latent coefficients | Leave paper comparator intact | Override both using one setting | Asymmetric if user changes scalar settings; documented |
+| Combination | Sum credits inside one log(1+E), common alpha/threshold/fallback | Same decoding framework | Sum log boosts; OR gates | High |
+| Strength control | Optional no_geometry_double: extra increment unconditionally, including first visit | Distinguish selector from generic stronger boost | No control; compensate alpha | High; intentionally stronger first visit |
+| Compatibility | New methods opt-in, defaults unchanged; materialize bonus_weight in saved policy | Reproducibility without extra default expense | Change old combined method | Organizational |
+| Trace/counters | Existing local boost-attribution and new per-method reason counts | Do not imply component-specific causality | Attribute every hybrid commit to radius | Important interpretation |
+
+Earlier decisions follow.
+
 # EOS early stopping and TPF update
 
 | Decision | Choice made | Why | Alternatives considered | Could this affect the scientific result? |

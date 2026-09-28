@@ -1,3 +1,15 @@
+# Current update: additive hybrid variants
+
+Two requested opt-in policies are implemented: unrestricted position credit plus an
+existing-region-match reward (layer16/radius1.00), and unrestricted position credit
+plus CreditDecoding's full token-specific credit vector. Both sum evidence before the
+same log fusion and retain the shared early stopping/threshold/fallback. They use
+confidence-weighted increments, with extra weight1 by default. An optional unconditional
+double-credit control isolates increased boost strength. No new hybrid GPU results
+have been collected locally. Exact formulas, state persistence and compatibility
+choices are in ROLLOUT_EXPERIMENT.md and DESIGN_DECISIONS.md. These changes do not
+resolve the known answer-extraction limitations or establish a scientific advantage.
+
 # Current update: opt-in early stop and explicit TPF
 
 The new experiment uses --early-stop: terminate only at committed EOS/EOT with a
@@ -67,7 +79,7 @@ incomplete answers as incorrect. Tracing is off by default for timing.
 
 ## 4. Main results
 
-**113 CPU tests passed** after this update. Tests cover manual A/A/B/A/B credit
+**136 CPU tests passed** after this update. Tests cover manual A/A/B/A/B credit
 arithmetic, retaining multiple regions across bank growth, position independence,
 frozen-anchor drift, candidate changes, exact boost equations, no count-based bypass,
 boosted fallback ranking, diagnostic/rollout state parity, and existing sampler,

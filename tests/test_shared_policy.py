@@ -47,7 +47,7 @@ def test_inactive_positions_do_not_accumulate_or_create_regions():
     assert torch.equal(before,obs.state.credit) and int(obs.state.count[0])==1
 
 
-@pytest.mark.parametrize('method',['baseline','confidence','credit','latent','combined','no_geometry'])
+@pytest.mark.parametrize('method',['baseline','confidence','credit','latent','combined','no_geometry','no_geometry_radius','no_geometry_credit','no_geometry_double'])
 def test_trace_mode_never_changes_tokens_counters_or_forward_count(method):
     cfg=dict(gen_length=8,block_length=8,steps=8,mask_id=6)
     model=ConstantLatentModel();prompt=torch.tensor([[2]])

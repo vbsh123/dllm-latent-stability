@@ -1,3 +1,86 @@
+# Additive credit hybrids (opt-in)
+
+The new methods share the existing early stop, threshold, fallback, and attribution.
+Use --bonus-weight (default1) to control the extra contribution. Saved policies now
+materialize all LatentSettings defaults, including that weight; older policy JSONs
+without it load as weight1. Existing methods ignore the weight and are unchanged.
+Let w_t=p_t(raw_top1)^gamma and j_t be the nearest saved region within radius.
+
+**no_geometry_radius**, requested at layer16/radius1.00:
+
+```
+S_t = beta*S_(t-1) + w_t*(1 + bonus_weight*existing_region_match_t)
+E_t(v) = 1[v == current_raw_top1]*S_t
+```
+
+A first observation or newly created anchor gives NO match bonus. Matching an older
+region after an excursion qualifies. Invalid hidden states earn the unrestricted
+increment but no geometry bonus. Base and bonus enter one position balance, so past
+bonuses persist (with decay) even when later states change regions. This is a new
+reward-based variant, distinct from original region-local credit. RegionSupport is
+reused for exact matching and diagnostics; its separate regional balances are not
+fused for this hybrid. Every position still has its own bank and scalar.
+
+**no_geometry_credit** combines unrestricted accumulation with actual token history:
+
+```
+S_t = beta*S_(t-1) + w_t
+C_t(v) = .7*C_(t-1)(v) + 1[v == current_raw_top1]*p_t(v)^.2
+E_t(v) = 1[v == current_raw_top1]*S_t + bonus_weight*C_t(v)
+```
+
+All old token credits remain available; this is not just a second scalar increment.
+No hidden hooks or regions are used. The token component retains the original fixed
+paper .7/.2 coefficients; the scalar uses saved latent beta/gamma, equal to those
+values in the provided run. Final fusion uses the saved alpha (.65 by default).
+Changing scalar coefficients can make the two components asymmetric and must be
+reported explicitly. New states reset at each output block.
+
+Both use `q=softmax(logits + alpha*log(1+E))` and the common confidence threshold.
+They do not add two logit bonuses separately and do not OR two acceptance gates.
+Weights are confidence-weighted, not literal unit credits, matching the previous
+agreed formula. Layer/radius affect only no_geometry_radius.
+
+Run the two requested hybrids (400 answers total on the same200 train questions):
+
+```bash
+git pull --ff-only
+python -m dllm_latent.gsm8k_rollout \
+  --config configs/credit_instruct_block64.json \
+  --policy-config runs/gsm_dev200_v2/policy.json \
+  --split train --limit 200 \
+  --methods no_geometry_radius no_geometry_credit \
+  --layer 16 --radius 1.00 --bonus-weight 1 \
+  --early-stop --no-trace --out runs/gsm_hybrid200
+```
+
+The optional **no_geometry_double** control replaces the match indicator with1 on
+every active observation, including the first. Thus it unconditionally gives
+(1+weight)*w_t. Add it to --methods for a600-answer comparison. It tests generic
+boost strength; the first-visit bonus makes it intentionally stronger than a radius
+hybrid's first visit. Paired reports use this control as a reference when present.
+At weight0 every hybrid recovers no_geometry predictions; unit tests verify this.
+No automatic extra run or default-method expansion is performed.
+
+Existing boost-enabled counters remain local position-threshold attribution, not
+component-specific causal attribution. A higher total credit budget can itself cause
+acceleration, and speed alone cannot establish that the extra selector is useful.
+Trace latent_support contains the position balance S (including radius rewards when
+applicable), not the entire token-credit vector. Separate method reason counts expose
+which variant was run. Accuracy extraction remains unchanged with known limitations.
+
+### The paper's approximately15x figure
+
+Table5's separate orthogonality experiment uses a no-early-stop baseline and reports
+15.39 TPF for Credit, versus12.64 for Fast-dLLM without cache (about22% incremental
+improvement). This is not the main GSM8K cell. Table1's GSM8K result with early stop
+is3.87 normalized TPF for Credit versus3.22 for Fast-dLLM. Our current GSM8K result
+is about3.13 visible-output tokens per forward, an unnormalized metric with custom
+cohort/evaluator/aggregation. We have not observed or reproduced the15x result.
+[Source: final paper, Tables1 and5](https://aclanthology.org/2026.acl-long.509.pdf).
+
+---
+
 # Current early-stop experiment
 
 New runs can enable `--early-stop`. The earlier runs documented below defaulted to

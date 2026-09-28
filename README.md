@@ -40,6 +40,16 @@ Use fresh output directories. Actual model accuracy, speed and GPU memory fit ar
 not yet validated; the CPU suite is engineering validation only. See
 [VAST_RUNBOOK.md](VAST_RUNBOOK.md) for hardware, setup and result retrieval details.
 
+## Additive credit hybrids
+
+Opt-in `no_geometry_radius` adds an existing-region-match reward to unrestricted
+position accumulation. `no_geometry_credit` adds unrestricted position credit to
+CreditDecoding's full token-history vector before logit fusion. `--bonus-weight 1`
+is the default extra weight; use layer16/radius1.00 for the requested radius hybrid.
+`no_geometry_double` is an optional unconditional extra-credit control, useful because
+stronger boosting alone may explain gains. See [the hybrid protocol](ROLLOUT_EXPERIMENT.md)
+for the 200-question commands and exact formulas. Existing methods are unchanged.
+
 ## Early stopping and explicit TPF
 
 Use `--early-stop` to terminate once an EOS/EOT is committed and every preceding
