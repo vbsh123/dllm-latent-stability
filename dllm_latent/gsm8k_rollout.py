@@ -22,7 +22,8 @@ from .parity import select_parity_indices
 NUMBER=r'[-+]?(?:\d[\d,]*(?:\.\d+)?|\.\d+)'
 MARKER=re.compile(r'^[ \t]*####[ \t]*\$?[ \t]*('+NUMBER+r')[ \t]*$',re.MULTILINE)
 INSTRUCTION='Solve the problem and show your reasoning. End your answer with a line of the form: #### number.'
-METHODS=('baseline','confidence','credit','latent','combined')
+DEFAULT_METHODS=('baseline','confidence','credit','latent','combined')
+METHODS=DEFAULT_METHODS+('no_geometry',)
 
 
 def numeric(text):
@@ -68,6 +69,19 @@ def summarize_boost_attribution(records):
     return result
 
 
+def summarize_region_observations(records):
+    available=bool(records) and all(r.get('region_observation_counts') is not None for r in records)
+    result=dict(region_observations_available=available,new_region_observations=None,
+                reused_region_observations=None,invalid_region_observations=None,new_region_fraction=None)
+    if available:
+        counts={k:sum(r['region_observation_counts'][k] for r in records) for k in ('new','reused','invalid')}
+        valid=counts['new']+counts['reused']
+        result.update(new_region_observations=counts['new'],reused_region_observations=counts['reused'],
+                      invalid_region_observations=counts['invalid'],
+                      new_region_fraction=counts['new']/valid if valid else None)
+    return result
+
+
 def write_report(records,out,bootstrap=1000):
     out=Path(out);df=pd.DataFrame([{k:v for k,v in r.items() if k not in ('commits','output','token_ids','question','formatted_prompt')} for r in records])
     if df.duplicated(['id','method']).any(): raise ValueError('Duplicate question/method result')
@@ -82,15 +96,17 @@ def write_report(records,out,bootstrap=1000):
             mean_completed_output_tokens=float((g.visible_output_tokens*g.complete).sum()/max(1,g.complete.sum())),
             latent_commits=sum(r.get('counts',{}).get('latent',0) for r in records if r['method']==method),
             combined_commits=sum(r.get('counts',{}).get('combined',0) for r in records if r['method']==method),
+            no_geometry_commits=sum(r.get('counts',{}).get('no_geometry',0) for r in records if r['method']==method),
             credit_commits=sum(r.get('counts',{}).get('credit',0) for r in records if r['method']==method),
             confidence_commits=sum(r.get('counts',{}).get('confidence',0) for r in records if r['method']==method),
             fallback_commits=int(g.fallback_commits.sum()),
             unchanged_context_steps=sum(r.get('unchanged_context_steps',0) for r in records if r['method']==method),
             forced_fraction=float(g.fallback_commits.sum()/max(1,g.total_commits.sum())),peak_gpu_gib=float(g.peak_gpu_bytes.max()/2**30),
-            **summarize_boost_attribution([r for r in records if r['method']==method])))
+            **summarize_boost_attribution([r for r in records if r['method']==method]),
+            **summarize_region_observations([r for r in records if r['method']==method])))
     summary=pd.DataFrame(rows);summary.to_csv(out/'summary.csv',index=False)
     rng=np.random.default_rng(1729);paired=[]
-    for reference in ('baseline','credit'):
+    for reference in ('baseline','credit','no_geometry'):
         ref=df[df.method==reference].set_index('id')
         if ref.empty: continue
         for method,g in df.groupby('method'):
@@ -166,6 +182,15 @@ from raw argmax. This is a same-state decision comparison, not a causal estimate
 saved forwards or final accuracy: trajectories already contain past boosted decisions.
 Old records lacking acceptance_counts have unavailable attribution, not zero use.
 
+The optional no_geometry control maintains a single discounted p(top1)^gamma balance
+per position regardless of token identity, with no hidden capture, anchors, or distance
+checks. Its layer/radius settings are ignored; coefficients and threshold are shared
+with latent. It resets per block and uses the same fallback. Speed differences include
+the saved geometric overhead; compare forwards as well as time and answer quality.
+Latent runs also record new/reused/invalid region observations across all active steps,
+including first visits and steps where no token is committed. No-geometry and older
+runs have unavailable geometry counters, not zero creation rates.
+
 output_tps is the total number of pre-EOS/EOT output tokens in completed generations
 divided by total decoder seconds, including time spent on incomplete attempts.
 full_span_tps also counts the generated suffix after EOS/EOT. It can overstate useful
@@ -184,7 +209,7 @@ def main():
     ap.add_argument('--policy-config',default='configs/rollout_policy.json')
     ap.add_argument('--out',required=True);ap.add_argument('--split',choices=['train','test'],default='train')
     ap.add_argument('--limit',type=int,default=100);ap.add_argument('--offset',type=int,default=0)
-    ap.add_argument('--methods',nargs='+',choices=METHODS,default=list(METHODS))
+    ap.add_argument('--methods',nargs='+',choices=METHODS,default=list(DEFAULT_METHODS))
     ap.add_argument('--gen-length',type=int);ap.add_argument('--steps',type=int);ap.add_argument('--block-length')
     ap.add_argument('--layer',type=int);ap.add_argument('--radius',type=float);ap.add_argument('--decay',type=float)
     ap.add_argument('--latent-alpha',type=float);ap.add_argument('--latent-gamma',type=float)
@@ -260,7 +285,7 @@ def main():
         for method in args.methods:
             torch.manual_seed(cfg['seed']);traced=run(method,ids,True)
             torch.manual_seed(cfg['seed']);plain=run(method,ids,False)
-            if not torch.equal(traced['tokens'],plain['tokens']) or traced['counts']!=plain['counts'] or traced['acceptance_counts']!=plain['acceptance_counts'] or traced['forwards']!=plain['forwards']:
+            if not torch.equal(traced['tokens'],plain['tokens']) or traced['counts']!=plain['counts'] or traced['acceptance_counts']!=plain['acceptance_counts'] or traced['region_observation_counts']!=plain['region_observation_counts'] or traced['forwards']!=plain['forwards']:
                 raise AssertionError(f'Trace invariance failed: {method}')
             trace_checks.append(dict(method=method,identical=True))
         (out/'parity.json').write_text(json.dumps(dict(requested=args.parity_prompts,checked=len(checks),checks=checks,

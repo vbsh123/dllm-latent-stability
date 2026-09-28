@@ -50,7 +50,7 @@ incomplete answers as incorrect. Tracing is off by default for timing.
 
 ## 4. Main results
 
-**82 CPU tests passed** after this update. Tests cover manual A/A/B/A/B credit
+**88 CPU tests passed** after this update. Tests cover manual A/A/B/A/B credit
 arithmetic, retaining multiple regions across bank growth, position independence,
 frozen-anchor drift, candidate changes, exact boost equations, no count-based bypass,
 boosted fallback ranking, diagnostic/rollout state parity, and existing sampler,
@@ -182,3 +182,14 @@ confidence, and aggregate counters work without tracing. Older runs cannot recov
 these values; missing fields are reported unavailable. No causal speed contribution
 or geometric stability conclusion follows from the count alone. See the current
 ROLLOUT_EXPERIMENT.md attribution procedure for a confidence/Credit/latent comparison.
+
+## No-geometry control and radius .50
+
+An opt-in no_geometry method now accumulates discounted confidence-weighted credit
+at every active position regardless of token identity, without hidden hooks, anchors
+or distances. It shares latent's boost/threshold/fallback and per-block resets. A
+paired 200-train-question run against layer16/radius .50 is prepared; no control
+results have been collected by this local implementation. New region-creation/reuse
+counts will distinguish altered geometry from altered threshold decisions. The
+control's timing also excludes geometry overhead, so compare forwards and quality.
+Neither this control nor increasing radius establishes a monotonic speed bound.

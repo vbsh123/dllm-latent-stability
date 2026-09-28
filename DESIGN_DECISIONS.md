@@ -1,3 +1,16 @@
+# No-geometry control and large-radius comparison
+
+| Decision | Choice made | Why | Alternatives considered | Could this affect the scientific result? |
+|---|---|---|---|---|
+| Control recurrence | One per-position discounted p(top1)^gamma balance regardless of token changes | User authorized accumulation with no closeness test; isolate geometry | Unit increments; token-specific credit | High; uses same weighting as latent |
+| Control implementation | No hidden access or anchors, exact shared fusion/acceptance/fallback | Explicit removal of geometry, not a huge-radius approximation | Infinite-radius hidden checker | Time includes saved hook/search overhead; compare forwards too |
+| Larger radius | .50 at layer16, 10x original .05 | Material intervention after .10 barely changed aggregate behavior | .20, 1.0, multi-layer sweep | High, exploratory development choice |
+| Cohort | Same 200 train questions, control plus latent in one run | User's ongoing 200-question experiment, shared load/rotating order | Another small pilot | Selection bias persists; no heldout claim |
+| Geometry counters | New/reused/invalid active observations, first visits included | Determine whether radius changes matching, not just acceptance | Only count committed positions | Interpretation; denominator explicitly documented |
+| Defaults | Control is opt-in | Avoid silently increasing default experiment cost | Add to all-method default | Operational only |
+
+Earlier decisions follow.
+
 # Boost attribution instrumentation
 
 | Decision | Choice made | Why | Alternatives considered | Could this affect the scientific result? |

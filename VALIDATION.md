@@ -1,3 +1,13 @@
+# No-geometry control validation
+
+88 CPU tests pass. New checks independently verify control credit arithmetic across
+changing token identities; exact equality with regional fusion when every vector
+matches one anchor; execution on a model exposing no hidden states; per-block credit
+reset; boost attribution; trace invariance; region creation/reuse denominators; and
+paired reporting against the control. No real-model inference was run locally.
+
+Historical validation follows.
+
 # Boost attribution validation
 
 82 CPU tests pass after adding same-state boost-enabled commitment counters. Tests

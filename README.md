@@ -119,6 +119,16 @@ See [the attribution procedure](ROLLOUT_EXPERIMENT.md#how-many-commitments-did-b
 for a short run and exact denominators. A large boosted count alone does not prove
 that hidden-state geometry helped.
 
+## No-geometry control
+
+`--methods no_geometry latent --layer 16 --radius 0.50` compares unconditional
+per-position credit accumulation with the latent region method at ten times the
+original radius. No-geometry uses the same probability weighting, decay, logit fusion,
+threshold and fallback, but never reads hidden states. It is an optional control,
+not a replacement for the main method. See
+[the paired control run](ROLLOUT_EXPERIMENT.md#no-geometry-control-versus-a-much-larger-region)
+for the 200-question command and region-creation/reuse metrics.
+
 ## CPU checks
 
 Use Python 3.10–3.12. No full checkpoint is downloaded or executed locally.

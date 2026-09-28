@@ -109,6 +109,21 @@ def region_distribution(logits, hidden, active, region, token_credit=None):
     return fuse_credit(logits,evidence,region.s.alpha),info
 
 
+def no_geometry_distribution(logits, credit, active, settings):
+    """Control: one balance per position, no hidden states or token-specific memory.
+
+    Every active observation earns p(raw_top1)**gamma regardless of token changes.
+    Only current raw top1 receives the balance through the same logit fusion.
+    """
+    confidence,token=torch.softmax(logits.float(),dim=-1).max(-1)
+    credit[active]=settings.decay*credit[active]+confidence[active].pow(settings.gamma)
+    support=credit.masked_fill(~active,0)
+    evidence=torch.zeros_like(logits,dtype=torch.float32)
+    evidence.scatter_(1,token[:,None],support[:,None])
+    return fuse_credit(logits,evidence,settings.alpha),dict(support=support,
+        region_id=torch.full_like(token,-1))
+
+
 @torch.inference_mode()
 def decode(model,prompt,config,method='credit',threshold=.95,latent=None,fallback='top1',trace=True):
     """Each policy controls its own model inputs. Batch1, no CFG/cache/early stop.
@@ -118,7 +133,7 @@ def decode(model,prompt,config,method='credit',threshold=.95,latent=None,fallbac
     per-block forward cap applies to every method. Incomplete outputs are reported,
     never silently filled or dropped. Tracing copies only actual commit events.
     """
-    if method not in ('baseline','confidence','credit','latent','combined') or fallback not in ('top1','none'):
+    if method not in ('baseline','confidence','credit','latent','combined','no_geometry') or fallback not in ('top1','none'):
         raise ValueError('Unknown method/fallback')
     if not 0<threshold<=1: raise ValueError('Threshold must be in (0,1]')
     if prompt.ndim!=2 or prompt.shape[0]!=1: raise ValueError('Require batch1')
@@ -137,17 +152,18 @@ def decode(model,prompt,config,method='credit',threshold=.95,latent=None,fallbac
             captured['hidden']=h[0,span[0]:span[1]].detach().float().clone()
         handle=model.model.transformer.blocks[latent.layer-1].register_forward_hook(hook)
     forwards=0; commits=[]; trace_parts=[];complete=True
-    reason_codes=torch.arange(7,device=x.device)
-    counts=torch.zeros(7,device=x.device,dtype=torch.long)
+    reason_codes=torch.arange(8,device=x.device)
+    counts=torch.zeros(8,device=x.device,dtype=torch.long)
     unchanged_steps=torch.zeros((),device=x.device,dtype=torch.long)
     # Actual non-mask insertions only; first four buckets partition commitments.
     # Fifth is an overlapping audit for boosted winner changes at accepted positions.
     acceptance_counts=torch.zeros(5,device=x.device,dtype=torch.long)
+    region_counts=torch.zeros(3,device=x.device,dtype=torch.long)  # new, reused, invalid active
     try:
         for block_id in range(length//block):
             start=offset+block_id*block;stop=start+block;span[:]=[start,stop]
             schedule=get_num_transfer_tokens(x[:,start:stop]==mask,cap)[0]
-            credit=None;region=None
+            credit=None;region=None;position_credit=None
             for local_step in range(cap):
                 active=x[0,start:stop]==mask
                 if not active.any(): break
@@ -175,6 +191,12 @@ def decode(model,prompt,config,method='credit',threshold=.95,latent=None,fallbac
                     latent_q,info=region_distribution(logits,captured['hidden'],active,region,
                         credit if method=='combined' else None)
                     latent_conf,latent_tokens=latent_q.max(-1)
+                    region_counts+=torch.stack([info['new_region'].sum(),info['close'].sum(),
+                        (active & (info['region_id']<0)).sum()])
+                if method=='no_geometry':
+                    if position_credit is None: position_credit=torch.zeros(block,device=x.device)
+                    latent_q,info=no_geometry_distribution(logits,position_credit,active,latent)
+                    latent_conf,latent_tokens=latent_q.max(-1)
                 reason=torch.zeros(block,device=x.device,dtype=torch.long)
                 if method=='baseline':
                     selected=torch.zeros_like(active)
@@ -189,16 +211,16 @@ def decode(model,prompt,config,method='credit',threshold=.95,latent=None,fallbac
                 elif method=='credit':
                     confidence,tokens=credit_conf,credit_tokens
                     selected=active & (confidence>=threshold);reason[selected]=3
-                else:  # latent and combined use the same confidence acceptance rule as credit.
+                else:  # All boosted policies use the same confidence acceptance rule.
                     confidence,tokens=latent_conf,latent_tokens
-                    selected=active & (confidence>=threshold);reason[selected]=4 if method=='latent' else 6
+                    selected=active & (confidence>=threshold);reason[selected]={'latent':4,'combined':6,'no_geometry':7}[method]
                 if method!='baseline' and not selected.any() and fallback=='top1':
                     selected[confidence.masked_fill(~active,-torch.inf).argmax()]=True
                     reason[selected]=5
                 idx=torch.where(selected & active)[0]
                 unchanged_steps+=(~(selected & active & (tokens!=mask)).any()).long()
                 inserted=selected & active & (tokens!=mask)
-                threshold_accepted=inserted & ((reason==2) | (reason==3) | (reason==4) | (reason==6))
+                threshold_accepted=inserted & ((reason==2) | (reason==3) | (reason==4) | (reason==6) | (reason==7))
                 boost_enabled=threshold_accepted & (raw_confidence<threshold)
                 already_confident=threshold_accepted & (raw_confidence>=threshold)
                 changed_candidate=threshold_accepted & (tokens!=raw_tokens)
@@ -218,7 +240,7 @@ def decode(model,prompt,config,method='credit',threshold=.95,latent=None,fallbac
                 complete=False;break
     finally:
         if handle is not None: handle.remove()
-    reasons={1:'scheduled',2:'confidence',3:'credit',4:'latent',5:'fallback',6:'combined'}
+    reasons={1:'scheduled',2:'confidence',3:'credit',4:'latent',5:'fallback',6:'combined',7:'no_geometry'}
     # All instrumentation transfers occur AFTER the denoising loop. Algorithmic
     # active/selection checks can still synchronize; this is not a CUDA graph.
     count_values=counts.cpu().tolist()
@@ -231,5 +253,6 @@ def decode(model,prompt,config,method='credit',threshold=.95,latent=None,fallbac
                 boost_enabled=bool(boost_enabled)))
     attribution_keys=('boost_enabled','already_confident','fallback','scheduled','changed_candidate')
     attribution=dict(zip(attribution_keys,acceptance_counts.cpu().tolist()))
+    geometry_counts=dict(zip(('new','reused','invalid'),region_counts.cpu().tolist())) if use_latent else None
     return dict(tokens=x,forwards=forwards,complete=complete,unresolved_masks=int((x[0,offset:]==mask).sum()),
-                counts=count_dict,acceptance_counts=attribution,commits=commits,unchanged_context_steps=int(unchanged_steps))
+                counts=count_dict,acceptance_counts=attribution,region_observation_counts=geometry_counts,commits=commits,unchanged_context_steps=int(unchanged_steps))

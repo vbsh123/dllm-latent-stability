@@ -352,3 +352,65 @@ def test_boost_summary_fractions_and_legacy_missing_data():
     assert not old['boost_attribution_available'] and old['boost_enabled_commits'] is None
     mixed=summarize_boost_attribution(records+[{}])
     assert not mixed['boost_attribution_available'] and mixed['boost_enabled_fraction'] is None
+
+
+def test_no_geometry_accumulates_across_token_changes_with_manual_formula():
+    from dllm_latent.decoding import no_geometry_distribution
+    credit=torch.zeros(2);cfg=settings();expected=0.
+    for probs in ([.6,.4],[.2,.8],[.7,.3]):
+        logits=torch.tensor([probs,[.5,.5]]).log()
+        q,info=no_geometry_distribution(logits,credit,torch.tensor([True,False]),cfg)
+        expected=.7*expected+max(probs)**.2
+        evidence=np.zeros(2);evidence[np.argmax(probs)]=expected
+        expected_q=np.array(probs)*(1+evidence)**.65;expected_q/=expected_q.sum()
+        assert float(credit[0])==pytest.approx(expected)
+        assert float(credit[1])==0
+        np.testing.assert_allclose(q[0].numpy(),expected_q,rtol=1e-6)
+        assert info['region_id'].tolist()==[-1,-1]
+
+
+def test_no_geometry_matches_region_fusion_when_all_states_match():
+    from dllm_latent.decoding import no_geometry_distribution
+    cfg=settings();h=torch.tensor([[10.,0.]])
+    region=RegionSupport(h,cfg);credit=torch.zeros(1);active=torch.tensor([True])
+    for probs in ([.6,.4],[.4,.6],[.9,.1],[.3,.7]):
+        logits=torch.tensor([probs]).log()
+        a,_=region_distribution(logits,h,active,region)
+        b,_=no_geometry_distribution(logits,credit,active,cfg)
+        torch.testing.assert_close(a,b,rtol=0,atol=0)
+
+
+def test_no_geometry_needs_no_hidden_access_and_resets_per_block():
+    cfg=dict(gen_length=8,block_length=4,steps=8,mask_id=6)
+    # This fake model has no transformer or hidden-state hook interface at all.
+    result=decode(FixedDistribution(),torch.tensor([[2]]),cfg,method='no_geometry',threshold=.7,fallback='none')
+    assert result['complete'] and result['forwards']==4
+    assert result['counts']=={'no_geometry':8}
+    assert result['acceptance_counts']['boost_enabled']==8
+    assert result['region_observation_counts'] is None
+    assert all(e['block_step']==1 and e['region_id']==-1 for e in result['commits'])
+
+
+def test_region_creation_reuse_counts_and_missing_summary():
+    from dllm_latent.gsm8k_rollout import summarize_region_observations
+    cfg=dict(gen_length=8,block_length=8,steps=8,mask_id=6)
+    result=decode(ConstantLatentModel(),torch.tensor([[2]]),cfg,method='latent',threshold=.7,fallback='none')
+    assert result['region_observation_counts']==dict(new=8,reused=8,invalid=0)
+    summary=summarize_region_observations([result])
+    assert summary['new_region_fraction']==.5
+    assert summary['new_region_observations']==8
+    old=summarize_region_observations([{}])
+    assert not old['region_observations_available'] and old['new_region_fraction'] is None
+
+
+def test_no_geometry_comparison_is_in_report(tmp_path):
+    import pandas as pd
+    records=[]
+    for method in ('no_geometry','latent'):
+        for i in range(2):
+            records.append(dict(id=str(i),method=method,correct=True,lenient_correct=True,
+                complete=True,format_valid=True,forwards=2,seconds=1.,visible_output_tokens=8,
+                generated_span_tokens=8,fallback_commits=0,total_commits=8,peak_gpu_bytes=1024,commits=[]))
+    write_report(records,tmp_path,bootstrap=5)
+    paired=pd.read_csv(tmp_path/'paired_comparisons.csv')
+    assert list(zip(paired.reference,paired.method))==[('no_geometry','latent')]

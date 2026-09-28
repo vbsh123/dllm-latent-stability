@@ -302,3 +302,47 @@ This adds the missing raw-confidence comparator and records boost attribution fo
 Credit and latent. It does not rerun the expensive fixed-schedule baseline. Keep
 hardware/configuration fixed and use the new run for within-run timing comparisons;
 the added instrumentation has a small but unmeasured runtime cost.
+
+## No-geometry control versus a much larger region
+
+`no_geometry` keeps one scalar per still-masked position:
+
+```
+S_t = beta * S_(t-1) + p_t(raw_top1)^gamma
+mapped_credit(v) = 1[v == raw_top1] * S_t
+q = softmax(logits + alpha * log(1 + mapped_credit))
+```
+
+No hidden hooks, distance comparisons, anchors, token-specific balance or rejection
+of far-away states. It is NOT ordinary confidence decoding and does not add a uniform
+bonus to every vocabulary logit. Coefficients come from the saved latent settings;
+layer and radius do not affect this control. Inactive balances are untouched, and
+state resets at each block, just like latent. Acceptance, fallback and attribution
+are shared. It is opt-in; the existing default method list has not been expanded.
+
+Run it alongside layer16/radius .50, ten times the initial .05, on the same 200 train
+questions, using the existing coefficients/threshold and a fresh output directory:
+
+```bash
+git pull --ff-only
+python -m dllm_latent.gsm8k_rollout \
+  --config configs/credit_instruct_block64.json \
+  --policy-config runs/gsm_dev200_v2/policy.json \
+  --split train --limit 200 --methods no_geometry latent \
+  --layer 16 --radius 0.50 --no-trace \
+  --out runs/gsm_no_geometry_vs_radius050_200
+```
+
+There are 400 independent answers; one model load and rotating method order.
+paired_comparisons.csv now includes comparisons against no_geometry if present.
+Compare answer quality, forwards and time: the control also saves geometric search
+and hook overhead. It is not an upper bound on speed because trajectories diverge.
+
+Latent summaries additionally report new_region_observations,
+reused_region_observations, invalid_region_observations and new_region_fraction.
+The fraction is new/(new+reused), over all active observations, INCLUDING each
+position's initial anchor and steps with no commitment. It is not the fraction of
+commits with a new region. No-geometry and old runs have unavailable geometry metrics.
+Counts are collected on GPU with transfers only after decoding and work without traces.
+In no_geometry traces, region_id=-1 and the legacy latent_support field contains
+position credit; no hidden region exists. Boost attribution works unchanged.
