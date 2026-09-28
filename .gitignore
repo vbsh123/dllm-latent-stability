@@ -20,3 +20,5 @@ data/prepared*.jsonl
 pytorch_model*.bin
 *.tar.gz
 .DS_Store
+
+.local_backups/

@@ -109,6 +109,16 @@ Read [CODE_FLOW.md](CODE_FLOW.md) for the entry points and call sequence, and
 commands. Actual timing defaults to no tracing. Both collectors support length-
 stratified parity checks; the rollout also has --parity-only for a separate preflight.
 
+## Measure what boosting contributes
+
+New runs report `boost_enabled_commits` (raw confidence below tau, boosted confidence
+above it), `already_confident_commits`, and separate actual fallback/scheduled counts.
+This works with `--no-trace`; old runs cannot recover the missing raw confidence.
+Use `--methods confidence credit latent` to include raw-confidence parallel decoding.
+See [the attribution procedure](ROLLOUT_EXPERIMENT.md#how-many-commitments-did-boosting-enable)
+for a short run and exact denominators. A large boosted count alone does not prove
+that hidden-state geometry helped.
+
 ## CPU checks
 
 Use Python 3.10–3.12. No full checkpoint is downloaded or executed locally.

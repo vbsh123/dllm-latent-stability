@@ -256,3 +256,49 @@ reports unchanged_context_steps: without fallback, a deterministic model can rep
 exactly the same masked input, producing trivially identical hidden states. That can
 inflate apparent latent stability. Thus fallback=none is a diagnostic ablation with
 its own caveat, not automatically the more scientifically valid primary policy.
+
+## How many commitments did boosting enable?
+
+The current runner saves acceptance_counts per answer and aggregates these in
+summary.csv, including --no-trace runs. Counters accumulate on the GPU and transfer
+only after decoding; no per-step CPU logging is required.
+
+- boost_enabled_commits: actual non-mask insertions accepted by threshold where raw
+  maximum probability < tau but the policy's enhanced maximum >= tau.
+- already_confident_commits: threshold insertions with raw maximum >= tau.
+- actual_fallback_commits: actual non-mask forced-progress insertions.
+- actual_scheduled_commits: actual non-mask baseline schedule insertions.
+
+These four buckets partition actual insertions. boost_enabled_fraction divides by
+all actual insertions; boost_enabled_fraction_of_threshold divides only by boosted
+plus already-confident threshold acceptances. Undefined denominators are blank.
+boost_changed_candidate_commits separately counts threshold insertions whose enhanced
+winner differs from raw top1; it overlaps the first two buckets. A position may have
+passed raw threshold with a different token, so this distinction matters for Credit.
+Old *_commits reason counts include attempted mask-valued proposals, while new actual
+attribution excludes them. This only differs for pathological mask-valued predictions.
+
+With --trace, commits also contain raw_max_p, raw_selected_p, raw_top1 and boost_enabled;
+score remains the final policy confidence. Existing old results do not contain this
+information and cannot be retroactively attributed. Reports show missing attribution
+as unavailable, never as zero. The acceptance rule and generated tokens are unchanged.
+
+This answers a local question on each method's own current state. It does not measure
+causal forwards saved or prove geometry helped: earlier boosted decisions changed
+subsequent inputs. Confidence-only and no-geometry controls are still necessary.
+
+For an initial 40-question development check (change to 200 for the original cohort):
+
+```bash
+git pull --ff-only
+python -m dllm_latent.gsm8k_rollout \
+  --config configs/credit_instruct_block64.json \
+  --policy-config runs/gsm_dev200_v2/policy.json \
+  --split train --limit 40 --methods confidence credit latent \
+  --no-trace --out runs/gsm_boost_audit40
+```
+
+This adds the missing raw-confidence comparator and records boost attribution for
+Credit and latent. It does not rerun the expensive fixed-schedule baseline. Keep
+hardware/configuration fixed and use the new run for within-run timing comparisons;
+the added instrumentation has a small but unmeasured runtime cost.

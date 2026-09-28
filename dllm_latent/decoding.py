@@ -140,6 +140,9 @@ def decode(model,prompt,config,method='credit',threshold=.95,latent=None,fallbac
     reason_codes=torch.arange(7,device=x.device)
     counts=torch.zeros(7,device=x.device,dtype=torch.long)
     unchanged_steps=torch.zeros((),device=x.device,dtype=torch.long)
+    # Actual non-mask insertions only; first four buckets partition commitments.
+    # Fifth is an overlapping audit for boosted winner changes at accepted positions.
+    acceptance_counts=torch.zeros(5,device=x.device,dtype=torch.long)
     try:
         for block_id in range(length//block):
             start=offset+block_id*block;stop=start+block;span[:]=[start,stop]
@@ -157,6 +160,7 @@ def decode(model,prompt,config,method='credit',threshold=.95,latent=None,fallbac
                 if method=='baseline':
                     tokens=logits.argmax(-1)
                     confidence=p.gather(1,tokens[:,None]).squeeze(1)
+                raw_confidence,raw_tokens=confidence,tokens
                 info=None
                 if method in ('credit','combined'):
                     if credit is None: credit=torch.zeros_like(logits,dtype=torch.float32)
@@ -193,6 +197,13 @@ def decode(model,prompt,config,method='credit',threshold=.95,latent=None,fallbac
                     reason[selected]=5
                 idx=torch.where(selected & active)[0]
                 unchanged_steps+=(~(selected & active & (tokens!=mask)).any()).long()
+                inserted=selected & active & (tokens!=mask)
+                threshold_accepted=inserted & ((reason==2) | (reason==3) | (reason==4) | (reason==6))
+                boost_enabled=threshold_accepted & (raw_confidence<threshold)
+                already_confident=threshold_accepted & (raw_confidence>=threshold)
+                changed_candidate=threshold_accepted & (tokens!=raw_tokens)
+                acceptance_counts+=torch.stack([boost_enabled.sum(),already_confident.sum(),
+                    (inserted & (reason==5)).sum(),(inserted & (reason==1)).sum(),changed_candidate.sum()])
                 x[0,start+idx]=tokens[idx]
                 # Counts include attempted mask-valued proposals; completion exposes them.
                 counts+=(reason[:,None]==reason_codes[None,:]).sum(0)
@@ -201,7 +212,8 @@ def decode(model,prompt,config,method='credit',threshold=.95,latent=None,fallbac
                         torch.full_like(idx,block_id).float(),torch.full_like(idx,local_step).float(),
                         (block_id*block+idx).float(),tokens[idx].float(),confidence[idx].float(),reason[idx].float(),
                         info['support'][idx] if info is not None else torch.full_like(idx,float('nan'),dtype=torch.float32),
-                        info['region_id'][idx].float() if info is not None else torch.full_like(idx,-1).float()],dim=1))
+                        info['region_id'][idx].float() if info is not None else torch.full_like(idx,-1).float(),
+                        raw_confidence[idx],p[idx,tokens[idx]],raw_tokens[idx].float(),boost_enabled[idx].float()],dim=1))
             if (x[0,start:stop]==mask).any():
                 complete=False;break
     finally:
@@ -212,8 +224,12 @@ def decode(model,prompt,config,method='credit',threshold=.95,latent=None,fallbac
     count_values=counts.cpu().tolist()
     count_dict={name:count_values[code] for code,name in reasons.items() if count_values[code]}
     if trace_parts:
-        for step,b,local,pos,token,score,why,support,region_id in torch.cat(trace_parts).cpu().tolist():
+        for step,b,local,pos,token,score,why,support,region_id,raw_max_p,raw_selected_p,raw_top1,boost_enabled in torch.cat(trace_parts).cpu().tolist():
             commits.append(dict(step=int(step),block=int(b),block_step=int(local),position=int(pos),
-                token=int(token),score=score,reason=reasons[int(why)],latent_support=support if math.isfinite(support) else None,region_id=int(region_id)))
+                token=int(token),score=score,reason=reasons[int(why)],latent_support=support if math.isfinite(support) else None,region_id=int(region_id),
+                raw_max_p=raw_max_p,raw_selected_p=raw_selected_p,raw_top1=int(raw_top1),
+                boost_enabled=bool(boost_enabled)))
+    attribution_keys=('boost_enabled','already_confident','fallback','scheduled','changed_candidate')
+    attribution=dict(zip(attribution_keys,acceptance_counts.cpu().tolist()))
     return dict(tokens=x,forwards=forwards,complete=complete,unresolved_masks=int((x[0,offset:]==mask).sum()),
-                counts=count_dict,commits=commits,unchanged_context_steps=int(unchanged_steps))
+                counts=count_dict,acceptance_counts=attribution,commits=commits,unchanged_context_steps=int(unchanged_steps))

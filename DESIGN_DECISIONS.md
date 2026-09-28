@@ -1,3 +1,16 @@
+# Boost attribution instrumentation
+
+| Decision | Choice made | Why | Alternatives considered | Could this affect the scientific result? |
+|---|---|---|---|---|
+| Boost-enabled position | Raw max < tau and enhanced max >= tau on an actual threshold insertion | Position would not pass raw-confidence selection on this state | Compare only selected token's raw probability | Interpretation: winner changes are separate |
+| Partition | Boost-enabled / already-confident / fallback / scheduled, non-mask insertions only | Distinguish boosting from ordinary acceptance and forced progress | Count all method commits as boosted | High for claims about the source of acceleration |
+| Winner audit | Separate enhanced winner != raw argmax count; trace selected token raw probability | Boost can change token identity without enabling a new position | Ignore alternative winner | Interpretation only |
+| Collection | GPU counters, available with no-trace; transfer after loop | Avoid traced timing requirement | Full trajectory logging | Small unmeasured overhead; no policy changes |
+| Historical results | Missing counters reported unavailable | Cannot reconstruct raw confidence from generated text | Treat missing as zero | Prevent false conclusions |
+| Scope | Same-state local threshold counterfactual only | Prior boosted decisions already changed the trajectory | Claim exact forwards saved | No causal speed or stability claim |
+
+Earlier policy decisions follow and remain applicable unless superseded above.
+
 # Current policy: persistent regions and Credit-style logit fusion (v2)
 
 This section supersedes the historical decisions below. User requested preserving

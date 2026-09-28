@@ -1,3 +1,16 @@
+# Boost attribution validation
+
+82 CPU tests pass after adding same-state boost-enabled commitment counters. Tests
+separate raw threshold crossings from enhanced crossings, exclude fallback/schedule
+and mask-valued proposals, audit changed winners, check missing historical counters,
+and verify identical counters/tokens with tracing on and off. All transfers for
+instrumentation remain after the decoding loop. No full-model inference was performed
+locally. Existing GPU output files cannot supply these newly added counters.
+
+The local decoder contained an appended shell inspection snippet; it was preserved
+in ignored .local_backups before removal from the importable module. This repair and
+the counters do not change the decoding policy. Historical validation follows.
+
 # Current validation: persistent_regions_v2
 
 75 CPU tests passed (14 matplotlib/Pyparsing deprecation warnings). No full model

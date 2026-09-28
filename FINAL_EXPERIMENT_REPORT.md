@@ -50,7 +50,7 @@ incomplete answers as incorrect. Tracing is off by default for timing.
 
 ## 4. Main results
 
-**75 CPU tests passed** after this update. Tests cover manual A/A/B/A/B credit
+**82 CPU tests passed** after this update. Tests cover manual A/A/B/A/B credit
 arithmetic, retaining multiple regions across bank growth, position independence,
 frozen-anchor drift, candidate changes, exact boost equations, no count-based bypass,
 boosted fallback ranking, diagnostic/rollout state parity, and existing sampler,
@@ -172,3 +172,13 @@ heldout evaluation. Report failures and no improvement as valid outcomes.
 3. Credit strength and confidence threshold, together with forced-progress fallback.
 
 See ROLLOUT_EXPERIMENT.md and VAST_RUNBOOK.md for executable commands.
+
+## Additional boost-attribution instrumentation
+
+The runner now separates actual boost-enabled threshold insertions (raw max < tau,
+enhanced max >= tau), already-confident insertions, fallback and scheduled insertions.
+Changed enhanced winners are counted separately. Traces save both raw and enhanced
+confidence, and aggregate counters work without tracing. Older runs cannot recover
+these values; missing fields are reported unavailable. No causal speed contribution
+or geometric stability conclusion follows from the count alone. See the current
+ROLLOUT_EXPERIMENT.md attribution procedure for a confidence/Credit/latent comparison.

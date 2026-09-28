@@ -288,3 +288,67 @@ def test_latent_fallback_ranks_boosted_not_raw_confidence():
     # Second step: stable .6 beats new-region .61 after the regional logit boost.
     assert [e['position'] for e in result['commits'][:2]]==[0,1]
     assert all(e['region_id']>=0 for e in result['commits'])
+
+
+@pytest.mark.parametrize('method',['credit','latent','combined'])
+def test_boost_attribution_separates_new_crossings_from_already_confident(method):
+    cfg=dict(gen_length=8,block_length=8,steps=8,mask_id=6)
+    prompt=torch.tensor([[2]])
+    boosted=decode(ConstantLatentModel(),prompt,cfg,method=method,threshold=.7,fallback='none')
+    assert boosted['complete']
+    assert boosted['acceptance_counts']==dict(boost_enabled=8,already_confident=0,fallback=0,scheduled=0,changed_candidate=0)
+    assert all(e['raw_max_p']<.7<=e['score'] and e['boost_enabled'] for e in boosted['commits'])
+    already=decode(ConstantLatentModel(),prompt,cfg,method=method,threshold=.5,fallback='none')
+    assert already['acceptance_counts']==dict(boost_enabled=0,already_confident=8,fallback=0,scheduled=0,changed_candidate=0)
+    assert not any(e['boost_enabled'] for e in already['commits'])
+
+
+def test_fallback_and_scheduled_commits_are_not_credited_to_boost():
+    cfg=dict(gen_length=8,block_length=8,steps=8,mask_id=6)
+    for method,category in [('baseline','scheduled'),('credit','fallback'),('latent','fallback')]:
+        result=decode(ConstantLatentModel(),torch.tensor([[2]]),cfg,method=method,threshold=1.)
+        assert result['acceptance_counts'][category]==8
+        assert result['acceptance_counts']['boost_enabled']==0
+        assert result['acceptance_counts']['already_confident']==0
+        assert not any(e['boost_enabled'] for e in result['commits'])
+
+
+def test_winner_changes_reported_separately_from_position_threshold_crossings(monkeypatch):
+    import dllm_latent.decoding as decoding
+    def changed_distribution(logits,credit,active):
+        q=torch.zeros_like(logits);q[:,0]=.99;q[:,1]=.01
+        return q
+    monkeypatch.setattr(decoding,'credit_distribution',changed_distribution)
+    cfg=dict(gen_length=8,block_length=8,steps=8,mask_id=6)
+    result=decode(ConstantLatentModel(),torch.tensor([[2]]),cfg,method='credit',threshold=.5)
+    assert result['acceptance_counts']['boost_enabled']==0
+    assert result['acceptance_counts']['already_confident']==8
+    assert result['acceptance_counts']['changed_candidate']==8
+    assert all(e['raw_top1']==1 and e['token']==0 and e['raw_selected_p']==pytest.approx(.4) for e in result['commits'])
+
+
+def test_mask_valued_proposals_are_not_counted_as_actual_boost_commits(monkeypatch):
+    import dllm_latent.decoding as decoding
+    def mask_distribution(logits,credit,active):
+        q=torch.zeros_like(logits);q[:,6]=1.
+        return q
+    monkeypatch.setattr(decoding,'credit_distribution',mask_distribution)
+    cfg=dict(gen_length=8,block_length=8,steps=8,mask_id=6)
+    result=decode(ConstantLatentModel(),torch.tensor([[2]]),cfg,method='credit',threshold=.95,fallback='none')
+    assert not result['complete'] and result['unresolved_masks']==8
+    assert sum(result['acceptance_counts'].values())==0
+
+
+def test_boost_summary_fractions_and_legacy_missing_data():
+    from dllm_latent.gsm8k_rollout import summarize_boost_attribution
+    records=[dict(acceptance_counts=dict(boost_enabled=4,already_confident=3,fallback=1,scheduled=0,changed_candidate=2))]
+    summary=summarize_boost_attribution(records)
+    assert summary['boost_attribution_available']
+    assert summary['boost_enabled_commits']==4
+    assert summary['boost_enabled_fraction']==.5
+    assert summary['boost_enabled_fraction_of_threshold']==pytest.approx(4/7)
+    assert summary['boost_changed_candidate_commits']==2
+    old=summarize_boost_attribution([{}])
+    assert not old['boost_attribution_available'] and old['boost_enabled_commits'] is None
+    mixed=summarize_boost_attribution(records+[{}])
+    assert not mixed['boost_attribution_available'] and mixed['boost_enabled_fraction'] is None

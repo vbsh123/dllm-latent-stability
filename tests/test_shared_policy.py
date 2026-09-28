@@ -54,6 +54,7 @@ def test_trace_mode_never_changes_tokens_counters_or_forward_count(method):
     a=decode(model,prompt,cfg,method=method,trace=True)
     b=decode(model,prompt,cfg,method=method,trace=False)
     assert torch.equal(a['tokens'],b['tokens'])
+    assert a['acceptance_counts']==b['acceptance_counts']
     assert a['counts']==b['counts'] and a['forwards']==b['forwards'] and a['complete']==b['complete']
     assert a['commits'] and b['commits']==[]
     assert len(a['commits'])==sum(a['counts'].values())

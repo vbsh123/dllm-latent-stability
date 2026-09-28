@@ -46,6 +46,28 @@ def grade(text,gold,complete=True):
                 correct=bool(complete and strict==target),lenient_correct=bool(complete and lenient==target))
 
 
+def summarize_boost_attribution(records):
+    """Never misreport older runs without instrumentation as having zero boost use."""
+    keys=('boost_enabled','already_confident','fallback','scheduled','changed_candidate')
+    available=bool(records) and all(all(k in r.get('acceptance_counts',{}) for k in keys) for r in records)
+    result=dict(boost_attribution_available=available,
+        boost_enabled_commits=None,already_confident_commits=None,
+        actual_fallback_commits=None,actual_scheduled_commits=None,
+        boost_changed_candidate_commits=None,boost_enabled_fraction=None,
+        boost_enabled_fraction_of_threshold=None)
+    if not available:return result
+    total={k:sum(r['acceptance_counts'][k] for r in records) for k in keys}
+    threshold=total['boost_enabled']+total['already_confident']
+    all_commits=threshold+total['fallback']+total['scheduled']
+    result.update(boost_enabled_commits=total['boost_enabled'],
+        already_confident_commits=total['already_confident'],
+        actual_fallback_commits=total['fallback'],actual_scheduled_commits=total['scheduled'],
+        boost_changed_candidate_commits=total['changed_candidate'],
+        boost_enabled_fraction=total['boost_enabled']/all_commits if all_commits else None,
+        boost_enabled_fraction_of_threshold=total['boost_enabled']/threshold if threshold else None)
+    return result
+
+
 def write_report(records,out,bootstrap=1000):
     out=Path(out);df=pd.DataFrame([{k:v for k,v in r.items() if k not in ('commits','output','token_ids','question','formatted_prompt')} for r in records])
     if df.duplicated(['id','method']).any(): raise ValueError('Duplicate question/method result')
@@ -64,7 +86,8 @@ def write_report(records,out,bootstrap=1000):
             confidence_commits=sum(r.get('counts',{}).get('confidence',0) for r in records if r['method']==method),
             fallback_commits=int(g.fallback_commits.sum()),
             unchanged_context_steps=sum(r.get('unchanged_context_steps',0) for r in records if r['method']==method),
-            forced_fraction=float(g.fallback_commits.sum()/max(1,g.total_commits.sum())),peak_gpu_gib=float(g.peak_gpu_bytes.max()/2**30)))
+            forced_fraction=float(g.fallback_commits.sum()/max(1,g.total_commits.sum())),peak_gpu_gib=float(g.peak_gpu_bytes.max()/2**30),
+            **summarize_boost_attribution([r for r in records if r['method']==method])))
     summary=pd.DataFrame(rows);summary.to_csv(out/'summary.csv',index=False)
     rng=np.random.default_rng(1729);paired=[]
     for reference in ('baseline','credit'):
@@ -134,6 +157,14 @@ only the current raw top1 through the same logit fusion and confidence threshold
 Combined sums token and mapped regional credits before fusion; it has no OR gate.
 No classifier is trained. Saved old support-gate settings are incompatible.
 All uncompleted and incorrectly formatted answers remain in the denominator.
+
+Boost attribution partitions actual non-mask insertions into boosted threshold
+crossings (raw max < tau but enhanced max >= tau), already-confident threshold
+acceptances, fallback, and baseline scheduled insertions. These counters work with
+--no-trace. Changed candidate counts separately audit enhanced winners differing
+from raw argmax. This is a same-state decision comparison, not a causal estimate of
+saved forwards or final accuracy: trajectories already contain past boosted decisions.
+Old records lacking acceptance_counts have unavailable attribution, not zero use.
 
 output_tps is the total number of pre-EOS/EOT output tokens in completed generations
 divided by total decoder seconds, including time spent on incomplete attempts.
@@ -229,7 +260,7 @@ def main():
         for method in args.methods:
             torch.manual_seed(cfg['seed']);traced=run(method,ids,True)
             torch.manual_seed(cfg['seed']);plain=run(method,ids,False)
-            if not torch.equal(traced['tokens'],plain['tokens']) or traced['counts']!=plain['counts'] or traced['forwards']!=plain['forwards']:
+            if not torch.equal(traced['tokens'],plain['tokens']) or traced['counts']!=plain['counts'] or traced['acceptance_counts']!=plain['acceptance_counts'] or traced['forwards']!=plain['forwards']:
                 raise AssertionError(f'Trace invariance failed: {method}')
             trace_checks.append(dict(method=method,identical=True))
         (out/'parity.json').write_text(json.dumps(dict(requested=args.parity_prompts,checked=len(checks),checks=checks,
