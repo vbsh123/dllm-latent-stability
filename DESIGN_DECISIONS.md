@@ -1,3 +1,18 @@
+# Double base credit plus radius bonus versus triple unconditional credit
+
+| Decision | Choice made | Why | Alternatives considered | Could this affect the scientific result? |
+|---|---|---|---|---|
+| Base multiplier | Add positive finite base_weight, default1; applies only to no_geometry_radius and no_geometry_double | User requested 2x unrestricted plus 1x radius match | Increase bonus_weight, which instead gives 1x base plus 2x match | High; distinct credit trajectories |
+| Radius experiment | base_weight2, bonus_weight1, layer16/radius2 | Implements requested formula S=.7S+pmax^.2*(2+match) | Smaller radius | High; permissive geometry may add little selectivity |
+| Control | Same weights with no_geometry_double, double_bonus_start1 gives 3x every observation | Isolate strength from geometry | Delayed triple control | First observation gets 3x in control versus 2x in hybrid; keep this distinction explicit |
+| Naming and persistence | Keep existing method names; save base_weight in policy.json | Backward compatible defaults and counters | Introduce more method names | Compare saved settings, not method names alone; double can now denote triple strength |
+| Evaluation | Same200 train questions, early stop, no trace, old grading | Matched development cohort | Full test now | Exploratory; known extraction limitations remain |
+
+Validation:142 CPU tests passed. Manual recurrence checks cover both base weights,
+excursions and returning regions. A delayed unconditional control matches a single
+stable region even with token changes; two triple-credit parameterizations match
+exactly, with inactive balances preserved. No model inference ran locally.
+
 # Radius 2.0 and strength-control development run
 
 | Decision | Choice made | Why | Alternatives considered | Could this affect the scientific result? |

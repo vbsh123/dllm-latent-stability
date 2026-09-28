@@ -6,20 +6,21 @@ from dllm_latent.decoding import (LatentSettings, RegionSupport, hybrid_distribu
 from test_decoding import FixedDistribution, ConstantLatentModel
 
 
-def test_radius_bonus_manual_aaba_history_and_no_bonus_for_new_anchors():
-    cfg=LatentSettings(radius=.05);h=torch.tensor([[10.,0.]])
+@pytest.mark.parametrize('base_weight',[1.,2.])
+def test_radius_bonus_manual_aaba_history_and_no_bonus_for_new_anchors(base_weight):
+    cfg=LatentSettings(radius=.05,base_weight=base_weight);h=torch.tensor([[10.,0.]])
     region=RegionSupport(h,cfg);balance=torch.zeros(1);active=torch.tensor([True])
     logits=torch.tensor([[.6,.4]]).log();expected=0.;w=.6**.2
     for value,hit in ((10.,False),(10.,True),(20.,False),(10.,True)):
         q,info=hybrid_distribution(logits,balance,active,cfg,'no_geometry_radius',
             region=region,hidden=torch.tensor([[value,0.]]))
-        expected=.7*expected+w*(1+int(hit))
+        expected=.7*expected+w*(base_weight+int(hit))
         assert bool(info['close'][0])==hit
         assert float(balance[0])==pytest.approx(expected)
         manual=np.array([.6*(1+expected)**.65,.4]);manual/=manual.sum()
         np.testing.assert_allclose(q[0].numpy(),manual,rtol=1e-6)
     assert region.count.tolist()==[2]
-    assert float(balance[0])==pytest.approx(4.023*w)
+    assert float(balance[0])==pytest.approx((4.023+(base_weight-1)*2.533)*w)
 
 
 def test_credit_hybrid_retains_token_specific_history_and_adds_position_credit():
@@ -81,8 +82,9 @@ def test_bonus_weight_validation():
         with pytest.raises(ValueError):LatentSettings(bonus_weight=value)
 
 
-def test_delayed_double_matches_single_region_despite_token_changes():
-    cfg=LatentSettings(radius=2.,double_bonus_start=2)
+@pytest.mark.parametrize('base_weight',[1.,2.])
+def test_delayed_double_matches_single_region_despite_token_changes(base_weight):
+    cfg=LatentSettings(radius=2.,double_bonus_start=2,base_weight=base_weight)
     h=torch.tensor([[10.,0.],[10.,0.]])
     region=RegionSupport(h,cfg)
     a=torch.zeros(2);b=torch.zeros(2)
@@ -116,3 +118,19 @@ def test_two_requested_hybrids_get_a_paired_comparison(tmp_path):
     assert summary.loc['no_geometry_credit','no_geometry_credit_commits']==16
     paired=pd.read_csv(tmp_path/'paired_comparisons.csv')
     assert list(zip(paired.reference,paired.method))==[('no_geometry_credit','no_geometry_radius')]
+
+
+def test_triple_control_equivalent_parameterizations():
+    active=torch.tensor([True,False]);a=torch.tensor([0.,3.]);b=a.clone()
+    for probs in ([.6,.4],[.3,.7],[.8,.2]):
+        logits=torch.tensor([probs,probs]).log()
+        q,_=hybrid_distribution(logits,a,active,LatentSettings(base_weight=2,bonus_weight=1),'no_geometry_double')
+        reference,_=hybrid_distribution(logits,b,active,LatentSettings(base_weight=1,bonus_weight=2),'no_geometry_double')
+        torch.testing.assert_close(a,b,rtol=0,atol=0)
+        torch.testing.assert_close(q,reference,rtol=0,atol=0)
+    assert a[1].item()==3.
+
+
+def test_base_weight_validation():
+    for value in (0,-1,float('nan'),float('inf')):
+        with pytest.raises(ValueError):LatentSettings(base_weight=value)

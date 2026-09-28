@@ -14,6 +14,7 @@ class LatentSettings:
     gamma: float = .2
     mechanism: str = 'persistent_regions_v2'
     bonus_weight: float = 1.
+    base_weight: float = 1.
     double_bonus_start: int = 1
 
     def __post_init__(self):
@@ -23,9 +24,9 @@ class LatentSettings:
             raise ValueError('Require layer1..32')
         if self.mechanism != 'persistent_regions_v2':
             raise ValueError('Unsupported latent mechanism; do not reuse legacy support-gate settings')
-        if not all(math.isfinite(v) for v in (self.radius,self.decay,self.alpha,self.gamma,self.bonus_weight)):
+        if not all(math.isfinite(v) for v in (self.radius,self.decay,self.alpha,self.gamma,self.bonus_weight,self.base_weight)):
             raise ValueError('Latent settings must be finite')
-        if not (self.radius>0 and 0<=self.decay<=1 and self.alpha>=0 and self.gamma>0 and self.bonus_weight>=0):
+        if not (self.radius>0 and 0<=self.decay<=1 and self.alpha>=0 and self.gamma>0 and self.bonus_weight>=0 and self.base_weight>0):
             raise ValueError('Invalid latent settings')
 
 
@@ -132,9 +133,9 @@ def hybrid_distribution(logits, position_credit, active, settings, method,
                         region=None, hidden=None, token_credit=None):
     """Position credit plus existing-region hits OR independently saved token credit.
 
-    Radius hybrid: S <- beta*S + p(top1)^gamma * (1 + weight*existing_match).
+    Radius hybrid: S <- beta*S + p(top1)^gamma * (base_weight + weight*existing_match).
     Credit hybrid: S <- beta*S + p(top1)^gamma; E(v)=1[v=top1]*S + weight*C(v).
-    Double control: S <- beta*S + p(top1)^gamma * (1 + weight), every step.
+    Double control: S <- beta*S + p(top1)^gamma * (base_weight + weight), every step.
     A region's first observation is NOT an existing match. Radius bonuses are
     retained in the position balance even when later observations change regions.
     C is updated exactly once by the caller using the original Credit equations.
@@ -144,12 +145,12 @@ def hybrid_distribution(logits, position_credit, active, settings, method,
     if method=='no_geometry_radius':
         if region is None or hidden is None:raise ValueError('Radius bonus requires hidden state and region bank')
         _,info=region.update(hidden,active,confidence)
-        multiplier=1+settings.bonus_weight*info['close'].float()
+        multiplier=settings.base_weight+settings.bonus_weight*info['close'].float()
     elif method=='no_geometry_double':
         # A positive balance means this position has had an active observation.
         # p(max)>0 and gamma>0 ensure a positive increment, even with decay=0.
         eligible=(position_credit>0) if settings.double_bonus_start==2 else 1
-        multiplier=1+settings.bonus_weight*eligible
+        multiplier=settings.base_weight+settings.bonus_weight*eligible
     elif method=='no_geometry_credit':
         if token_credit is None:raise ValueError('Credit hybrid requires token-specific credit')
         multiplier=1

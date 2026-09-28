@@ -1,3 +1,11 @@
+# Current update: configurable base credit
+
+Added --base-weight (default1) for no_geometry_radius and no_geometry_double.
+With base2/bonus1, the radius hybrid earns 2x credit plus 1x on existing-region
+matches; the unconditional control earns 3x each observation. First-visit behavior
+still differs. Settings are saved in policy.json. All142 CPU tests pass; new GPU
+results remain pending. Answer-extraction limitations are unchanged.
+
 # Current update: radius expansion and strength controls
 
 Added scripts/radius_strength_experiment.sh: parity smoke check, then matched

@@ -296,3 +296,23 @@ This delays only the extra credit until a position's second active observation;
 base credit still starts immediately. Other methods ignore this option. Keep
 both controls distinct when combining results. Existing answer-extraction issues
 remain; this development round does not establish equal task accuracy.
+
+
+### Double base plus radius2 versus unconditional triple credit
+
+```bash
+python -m dllm_latent.gsm8k_rollout \
+  --config configs/credit_instruct_block64.json \
+  --policy-config runs/gsm_dev200_v2/policy.json \
+  --split train --limit 200 \
+  --methods no_geometry_radius no_geometry_double \
+  --layer 16 --radius 2.0 --base-weight 2 --bonus-weight 1 \
+  --double-bonus-start 1 --early-stop --no-trace \
+  --out runs/gsm_doublebase_radius2_vs_triple200
+```
+
+This runs200 questions per method. Under these settings, no_geometry_radius earns
+2x pmax^gamma on new anchors and3x on existing-region matches; no_geometry_double
+earns3x unconditionally, including the first observation. The name is retained for
+compatibility; inspect policy.json to identify strength. --base-weight defaults to1
+and affects only these two methods. Fusion, decay and acceptance remain unchanged.

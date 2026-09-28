@@ -228,11 +228,12 @@ including first visits and steps where no token is committed. No-geometry and ol
 runs have unavailable geometry counters, not zero creation rates.
 
 Optional hybrids add position-level accumulation to radius matching or token credit.
-no_geometry_radius earns (1 + bonus_weight*existing_match)*p(top1)^gamma each step in
+no_geometry_radius earns (base_weight + bonus_weight*existing_match)*p(top1)^gamma each step in
 one position balance; new anchors do not receive a match bonus. no_geometry_credit
 adds the original token-credit vector (scaled by bonus_weight) to the position credit
 mapped to current top1, before shared log fusion. no_geometry_double adds the same
-extra increment unconditionally, a control for stronger boosting. This changes total
+extra increment on top of base_weight unconditionally (unless delayed), a control
+for stronger boosting. base_weight affects only these two methods. This changes total
 credit strength, so a faster hybrid alone is not evidence that its selector is useful.
 Layer/radius apply only to the radius hybrid; all keep the common stopping rule.
 
@@ -263,6 +264,7 @@ def main():
     ap.add_argument('--gen-length',type=int);ap.add_argument('--steps',type=int);ap.add_argument('--block-length')
     ap.add_argument('--layer',type=int);ap.add_argument('--radius',type=float);ap.add_argument('--decay',type=float)
     ap.add_argument('--latent-alpha',type=float);ap.add_argument('--latent-gamma',type=float)
+    ap.add_argument('--base-weight',type=float,help='Base increment multiplier for no_geometry_radius and no_geometry_double only; default 1')
     ap.add_argument('--bonus-weight',type=float,help='Hybrid extra-credit multiplier; default 1')
     ap.add_argument('--double-bonus-start',type=int,choices=[1,2],help='Only no_geometry_double: first extra credit on observation 1 (default) or 2')
     ap.add_argument('--confidence-threshold',type=float);ap.add_argument('--fallback',choices=['top1','none'])
@@ -288,7 +290,7 @@ def main():
         if getattr(args,key) is not None: cfg[key]=getattr(args,key)
     block=args.block_length or cfg['block_length'];cfg['block_length']=cfg['gen_length'] if block=='full' else int(block)
     validate_config(cfg)
-    for key,arg in [('layer','layer'),('radius','radius'),('decay','decay'),('alpha','latent_alpha'),('gamma','latent_gamma'),('bonus_weight','bonus_weight'),('double_bonus_start','double_bonus_start')]:
+    for key,arg in [('layer','layer'),('radius','radius'),('decay','decay'),('alpha','latent_alpha'),('gamma','latent_gamma'),('bonus_weight','bonus_weight'),('base_weight','base_weight'),('double_bonus_start','double_bonus_start')]:
         if getattr(args,arg) is not None: policy['latent'][key]=getattr(args,arg)
     if args.confidence_threshold is not None: policy['threshold']=args.confidence_threshold
     if args.fallback is not None: policy['fallback']=args.fallback
