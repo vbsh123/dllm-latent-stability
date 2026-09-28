@@ -267,3 +267,32 @@ The pre-final-EOS filter is retrospective cohort analysis and never an online fe
 Use fresh directories after configuration/code changes; collection resumes only with
 an identical manifest. Old traces without shared policy_accept decisions and their policy manifest must
 be recollected. No actual model inference or scientific conclusions yet.
+
+
+### Radius expansion and strength controls
+
+Run the same 200 development questions (three methods, layer16/radius2,
+bonus weight1, early stop, tracing off):
+
+```bash
+bash scripts/radius_strength_experiment.sh 200 gsm_radius200_strength runs/gsm_dev200_v2/policy.json
+```
+
+Results: `runs/gsm_radius200_strength_measured/summary.csv` and
+`paired_comparisons.csv`. The script first runs a three-prompt parity check.
+Double credit is unconditional from the first observation. For the additional
+first-visit-matched control, run:
+
+```bash
+python -m dllm_latent.gsm8k_rollout \
+  --config configs/credit_instruct_block64.json \
+  --policy-config runs/gsm_dev200_v2/policy.json \
+  --split train --limit 200 --methods no_geometry_double \
+  --bonus-weight 1 --double-bonus-start 2 \
+  --early-stop --no-trace --out runs/gsm_double_delayed200
+```
+
+This delays only the extra credit until a position's second active observation;
+base credit still starts immediately. Other methods ignore this option. Keep
+both controls distinct when combining results. Existing answer-extraction issues
+remain; this development round does not establish equal task accuracy.

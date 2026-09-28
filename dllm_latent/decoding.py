@@ -14,8 +14,11 @@ class LatentSettings:
     gamma: float = .2
     mechanism: str = 'persistent_regions_v2'
     bonus_weight: float = 1.
+    double_bonus_start: int = 1
 
     def __post_init__(self):
+        if self.double_bonus_start not in (1, 2):
+            raise ValueError('Double bonus must start at observation 1 or 2')
         if not 1 <= self.layer <= 32:
             raise ValueError('Require layer1..32')
         if self.mechanism != 'persistent_regions_v2':
@@ -143,7 +146,10 @@ def hybrid_distribution(logits, position_credit, active, settings, method,
         _,info=region.update(hidden,active,confidence)
         multiplier=1+settings.bonus_weight*info['close'].float()
     elif method=='no_geometry_double':
-        multiplier=1+settings.bonus_weight
+        # A positive balance means this position has had an active observation.
+        # p(max)>0 and gamma>0 ensure a positive increment, even with decay=0.
+        eligible=(position_credit>0) if settings.double_bonus_start==2 else 1
+        multiplier=1+settings.bonus_weight*eligible
     elif method=='no_geometry_credit':
         if token_credit is None:raise ValueError('Credit hybrid requires token-specific credit')
         multiplier=1

@@ -1,3 +1,13 @@
+# Current update: radius expansion and strength controls
+
+Added scripts/radius_strength_experiment.sh: parity smoke check, then matched
+200-question train runs of latent radius2, no_geometry_radius radius2, and
+no_geometry_double. The optional --double-bonus-start 2 control excludes the
+first-observation extra credit to match radius-hybrid eligibility. Existing defaults
+and grading remain unchanged. GPU results are pending; no new scientific conclusion
+is inferred from CPU tests. Answer extraction must still be audited before the final
+heldout accuracy comparison.
+
 # Current update: additive hybrid variants
 
 Two requested opt-in policies are implemented: unrestricted position credit plus an

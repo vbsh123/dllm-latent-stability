@@ -1,3 +1,21 @@
+# Radius 2.0 and strength-control development run
+
+| Decision | Choice made | Why | Alternatives considered | Could this affect the scientific result? |
+|---|---|---|---|---|
+| Radius expansion | Layer16 radius2.0 for both latent and no_geometry_radius | User requested both larger-radius variants | More layers or a larger grid | Yes; increasingly permissive geometry can approach unconditional accumulation |
+| Main strength control | no_geometry_double, weight1, extra credit from first observation | Requested double-credit comparison; preserve original control | Delay extra credit one observation | Yes; first observation gets more evidence than radius hybrid |
+| Matched optional control | --double-bonus-start 2 delays only unconditional extra credit, independently per position | Radius matching cannot reward initial anchor creation | Silently alter existing double method | Yes; separates first-visit timing from geometric selectivity |
+| Cohort/settings | Same200 train questions, old saved policy, early stop, no trace; three methods share one run | Match development runs and rotate timing order | Full heldout tuning | Development only; freeze settings before heldout evaluation |
+| Grading | Preserve existing strict/lenient fields for this speed-control round | Avoid mixing a scoring change into comparisons | Replace parser now | Known extraction errors remain; neither metric alone establishes quality parity |
+
+The optional delayed control uses positive position credit to identify previously
+observed positions. Active finite softmax distributions have positive p(max), so
+every observation leaves positive credit even when decay is zero. Inactive balances
+are unchanged. The setting only affects no_geometry_double and is saved in policy.json.
+Synthetic tests verify equivalence to the radius hybrid on a single-region trajectory,
+including changing top1 identities and staggered position activation. This is an
+engineering check, not evidence that geometry helps. No model inference ran locally.
+
 # Additive hybrids: unrestricted credit plus selective evidence
 
 | Decision | Choice made | Why | Alternatives considered | Could this affect the scientific result? |

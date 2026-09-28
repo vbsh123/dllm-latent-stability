@@ -264,6 +264,7 @@ def main():
     ap.add_argument('--layer',type=int);ap.add_argument('--radius',type=float);ap.add_argument('--decay',type=float)
     ap.add_argument('--latent-alpha',type=float);ap.add_argument('--latent-gamma',type=float)
     ap.add_argument('--bonus-weight',type=float,help='Hybrid extra-credit multiplier; default 1')
+    ap.add_argument('--double-bonus-start',type=int,choices=[1,2],help='Only no_geometry_double: first extra credit on observation 1 (default) or 2')
     ap.add_argument('--confidence-threshold',type=float);ap.add_argument('--fallback',choices=['top1','none'])
     ap.add_argument('--warmup',type=int,default=1)
     stopping=ap.add_mutually_exclusive_group()
@@ -287,7 +288,7 @@ def main():
         if getattr(args,key) is not None: cfg[key]=getattr(args,key)
     block=args.block_length or cfg['block_length'];cfg['block_length']=cfg['gen_length'] if block=='full' else int(block)
     validate_config(cfg)
-    for key,arg in [('layer','layer'),('radius','radius'),('decay','decay'),('alpha','latent_alpha'),('gamma','latent_gamma'),('bonus_weight','bonus_weight')]:
+    for key,arg in [('layer','layer'),('radius','radius'),('decay','decay'),('alpha','latent_alpha'),('gamma','latent_gamma'),('bonus_weight','bonus_weight'),('double_bonus_start','double_bonus_start')]:
         if getattr(args,arg) is not None: policy['latent'][key]=getattr(args,arg)
     if args.confidence_threshold is not None: policy['threshold']=args.confidence_threshold
     if args.fallback is not None: policy['fallback']=args.fallback

@@ -81,6 +81,26 @@ def test_bonus_weight_validation():
         with pytest.raises(ValueError):LatentSettings(bonus_weight=value)
 
 
+def test_delayed_double_matches_single_region_despite_token_changes():
+    cfg=LatentSettings(radius=2.,double_bonus_start=2)
+    h=torch.tensor([[10.,0.],[10.,0.]])
+    region=RegionSupport(h,cfg)
+    a=torch.zeros(2);b=torch.zeros(2)
+    # Second position becomes active later: delay is per position, not global.
+    for step in range(4):
+        active=torch.tensor([True,step>=2])
+        logits=torch.tensor([[.6,.4] if step%2 else [.3,.7]]*2).log()
+        q,_=hybrid_distribution(logits,a,active,cfg,'no_geometry_radius',region,h)
+        control,_=hybrid_distribution(logits,b,active,cfg,'no_geometry_double')
+        torch.testing.assert_close(q,control,rtol=0,atol=0)
+        torch.testing.assert_close(a,b,rtol=0,atol=0)
+
+
+def test_double_bonus_start_validation():
+    for start in (0,3):
+        with pytest.raises(ValueError):LatentSettings(double_bonus_start=start)
+
+
 def test_two_requested_hybrids_get_a_paired_comparison(tmp_path):
     import pandas as pd
     from dllm_latent.gsm8k_rollout import write_report
