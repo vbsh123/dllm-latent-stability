@@ -1,3 +1,13 @@
+# Evaluation audit and offline regrading
+
+| Decision | Choice made | Why | Alternatives considered | Could this affect the scientific result? |
+|---|---|---|---|---|
+| Existing scores | Preserve historical strict/lenient grader and result files | Keep prior tables reproducible and detect original grading errors | Silently replace online grader | High; legacy grades are not reliable semantic accuracy |
+| New parser | Last explicit answer signal; exact rational numeric normalization; gold-independent selection | Avoid prior-marker and incidental-last-number errors | Official evaluator, LLM judge, unrestricted last-number parser | High; heuristic still needs validation, is not official benchmark reproduction |
+| Ambiguity | Extra numbers/expressions/prose/missing markers enter manual review; unresolved never auto-correct | Avoid optimistic rescoring | Guess intended answer or search for gold | High; automatic fraction is provisional and conservative, not final accuracy |
+| Integrity | Recompute saved metrics and check gold/prompt snapshots, token lengths, EOS prefix, counts, question sets | Detect remote corruption/mixed runs without inference | Rerun generations | Cannot independently verify provenance or text decoding from saved files alone |
+| Decoder verification | Independent scalar oracle across strengths1,3,6,12,36 and actual model-call counter | Check large boosts really implement stated recurrence and count forwards | Only test helpers against themselves | CPU synthetic validation only |
+
 # Double base credit plus radius bonus versus triple unconditional credit
 
 | Decision | Choice made | Why | Alternatives considered | Could this affect the scientific result? |

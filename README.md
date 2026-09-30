@@ -316,3 +316,23 @@ This runs200 questions per method. Under these settings, no_geometry_radius earn
 earns3x unconditionally, including the first observation. The name is retained for
 compatibility; inspect policy.json to identify strength. --base-weight defaults to1
 and affects only these two methods. Fusion, decay and acceptance remain unchanged.
+
+
+### Audit saved answers and metrics (no inference)
+
+On Vast, after the selected runs have finished:
+
+```bash
+python -m dllm_latent.audit_gsm8k \
+  --run runs/gsm_unconditional6x_200 runs/gsm_unconditional12x_200 \
+  --out runs/grading_audit_6x_12x
+```
+
+Reads existing files; no model or tokenizer download. Outputs summary.csv,
+integrity_issues.csv, answers.csv, review.csv and paired_legacy.csv. Original outputs
+are unchanged. An integrity issue returns exit status1 after writing reports. Use
+only run paths present on this instance, and a fresh audit output directory.
+`automatic_correct_fraction_all_questions` is provisional: ambiguous cases count
+as unresolved rather than silently becoming correct. Inspect full answers in review.csv
+and sample unflagged answers before claiming corrected accuracy. See
+[EVALUATION_AUDIT.md](EVALUATION_AUDIT.md) for confirmed bugs and audit limits.

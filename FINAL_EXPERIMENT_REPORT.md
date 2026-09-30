@@ -1,3 +1,12 @@
+# Current update: evaluation audit
+
+Confirmed strict/lenient extraction defects that can both falsely credit and falsely
+reject answers. EVALUATION_AUDIT.md records examples, decoder checks and limitations.
+The new audit_gsm8k command preserves old results, checks saved integrity and produces
+conservative gold-independent extraction with an explicit manual-review queue. No
+new remote accuracy estimate is available yet; existing accuracy claims remain
+provisional. No change to decoding or online historical grading was made.
+
 # Current update: configurable base credit
 
 Added --base-weight (default1) for no_geometry_radius and no_geometry_double.
