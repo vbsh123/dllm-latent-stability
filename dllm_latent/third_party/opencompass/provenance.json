@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/open-compass/opencompass",
+  "revision": "e2d2b9a5236ba6a2f0a855af93796e4489c268b7",
+  "sha256": {
+    "opencompass/datasets/gsm8k.py": "f19fa92d04c9f694dc9ba7bc95321958299c64037f0962fb0d0a4be066b31f9b",
+    "LICENSE": "ba92da766daca067645bd126edb60c63ff55079316bacc91d4831e61fed6d7b0"
+  },
+  "scope": "Standard gsm8k postprocessor and Gsm8kEvaluator; CreditDecoding exact config unverified"
+}

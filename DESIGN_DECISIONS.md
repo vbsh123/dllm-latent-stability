@@ -1,3 +1,18 @@
+# Pinned OpenCompass-compatible offline scoring
+
+| Decision | Choice | Why | Alternatives | Likely impact |
+|---|---|---|---|---|
+| Scoring source | Vendored, hash-checked upstream GSM8K module; exact revision in third_party/opencompass/provenance.json | Replace an unverified custom protocol with reproducible upstream scoring | Install entire OpenCompass or rewrite regex | Standard scorer only; paper exact config remains unverified |
+| Execution | Execute selected original AST bodies, removing registry decorators; inert base class | No model load or additional framework environment required | Copy a similar regex by hand | Equality, extraction and aggregate score bodies unchanged |
+| Saved references | Original answer field from questions.jsonl | Preserve exact upstream reference processing | Reconstruct from normalized saved gold | Scientific notation in normalized gold would otherwise change behavior |
+| Incomplete outputs | Report raw upstream accuracy AND separate completion-gated score | Upstream scorer itself does not know decoding completeness | Silently modify its equality logic | Both denominators include every question |
+| Reporting | Explicit percent columns; preserve old strict/lenient fields and files | Avoid confusing fractions with percentages or rewriting history | Replace old scores | Exact metric names distinguish protocols |
+
+Known differences from our lenient parser include stopping at Question:, comma
+handling, and numeric equality tolerance. Fractions/exponents remain upstream
+limitations. This does not authenticate CreditDecoding's exact config or reproduce
+its full benchmark settings. No real answers have been rescored locally.
+
 # Evaluation audit and offline regrading
 
 | Decision | Choice made | Why | Alternatives considered | Could this affect the scientific result? |

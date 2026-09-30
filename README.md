@@ -336,3 +336,25 @@ only run paths present on this instance, and a fresh audit output directory.
 as unresolved rather than silently becoming correct. Inspect full answers in review.csv
 and sample unflagged answers before claiming corrected accuracy. See
 [EVALUATION_AUDIT.md](EVALUATION_AUDIT.md) for confirmed bugs and audit limits.
+
+
+### Pinned OpenCompass scoring of the existing 3x run
+
+```bash
+python -m dllm_latent.opencompass_score \
+  --run runs/gsm_doublebase_radius2_vs_triple200 \
+  --methods no_geometry_double \
+  --out runs/opencompass_3x
+```
+
+No inference or download. Requires the original generations.jsonl, questions.jsonl
+and manifest.json; recover these from the old instance/backup if necessary. This
+run's no_geometry_double used base2+bonus1, so it is the3x control. Output includes
+summary.csv (accuracy in PERCENT), answers.csv, disagreements.csv and a provenance
+manifest. Omit --methods to score every method. Original scoring code is vendored
+with revision/hash/license in dllm_latent/third_party/opencompass. This uses standard
+OpenCompass GSM8K scoring, not a verified CreditDecoding evaluation configuration.
+
+Before deleting a GPU instance, preserve the entire run directory, not just summary.csv.
+It contains generated answers, token IDs, questions, policy and reproduction metadata.
+Cloud destination/authentication must be configured separately; git does not back up runs.

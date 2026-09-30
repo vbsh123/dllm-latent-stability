@@ -17,3 +17,6 @@ include = ["dllm_latent*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.setuptools.package-data]
+dllm_latent = ["third_party/opencompass/*"]

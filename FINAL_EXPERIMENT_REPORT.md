@@ -1,3 +1,11 @@
+# Current update: pinned upstream GSM8K scoring
+
+opencompass_score now scores saved generations using original pinned OpenCompass
+postprocessor/evaluator bodies, preserving old results. It reports raw upstream
+accuracy and separate completion-gated accuracy, plus answer-level disagreements.
+This corrects the provenance gap in the prior custom scorer but does not establish
+an exact CreditDecoding evaluator configuration match. Remote rescoring is pending.
+
 # Current update: evaluation audit
 
 Confirmed strict/lenient extraction defects that can both falsely credit and falsely
